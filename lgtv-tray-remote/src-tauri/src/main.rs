@@ -350,7 +350,7 @@ fn main() {
         config: Mutex::new(Config::load()),
     });
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state.clone())
@@ -465,6 +465,13 @@ fn main() {
             get_shortcut_settings,
             set_shortcut,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    // On macOS, set activation policy to Accessory to hide from dock
+    // Must be set after build but before run
+    #[cfg(target_os = "macos")]
+    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+    app.run(|_, _| {});
 }

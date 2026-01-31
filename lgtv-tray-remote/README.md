@@ -70,8 +70,18 @@ nix build
 Download from the [Releases](https://github.com/jaredcat/plasmoid-lgtv-remote/releases) page:
 
 - **Windows**: `lgtv-tray_x.x.x_x64-setup.exe` or `.msi`
-- **macOS**: `lgtv-tray_x.x.x_x64.dmg`
+- **macOS**: `lgtv-tray_x.x.x_aarch64.dmg` (Apple Silicon) or `lgtv-tray_x.x.x_x64.dmg` (Intel)
 - **Linux**: `lgtv-tray_x.x.x_amd64.AppImage` or `.deb`
+
+#### macOS: Removing Quarantine
+
+Since the app isn't signed with an Apple Developer certificate, macOS Gatekeeper will block it. After installing, run:
+
+```bash
+xattr -cr "/Applications/LG TV Remote.app"
+```
+
+Then you can open the app normally.
 
 ### Build from Source
 

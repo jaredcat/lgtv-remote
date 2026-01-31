@@ -17,7 +17,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
-        
+
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" ];
         };
@@ -33,7 +33,7 @@
           dbus
           openssl
           librsvg
-          
+
           # For system tray
           libappindicator-gtk3
         ];
@@ -41,11 +41,11 @@
         nativeBuildInputs = with pkgs; [
           rustToolchain
           pkg-config
-          
+
           # For icon generation
           librsvg
           imagemagick
-          
+
           # Tauri CLI
           cargo-tauri
         ];
@@ -59,7 +59,7 @@
       in {
         devShells.default = pkgs.mkShell {
           inherit buildInputs nativeBuildInputs;
-          
+
           shellHook = ''
             export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
             echo "LG TV Remote development environment"
@@ -70,20 +70,20 @@
             echo "  ./generate-icons.sh - Generate icon files"
             echo ""
           '';
-          
+
           # Required for Tauri
           WEBKIT_DISABLE_COMPOSITING_MODE = "1";
         };
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
-          version = "1.0.0";
-          
+          version = "1.0.1";
+
           src = ./.;
-          
+
           cargoRoot = "src-tauri";
           buildAndTestSubdir = "src-tauri";
-          
+
           cargoLock = {
             lockFile = ./src-tauri/Cargo.lock;
           };
@@ -114,22 +114,22 @@
           # Skip default cargo build, use tauri instead
           buildPhase = ''
             runHook preBuild
-            
+
             cd src-tauri
             cargo tauri build --no-bundle
             cd ..
-            
+
             runHook postBuild
           '';
 
           installPhase = ''
             runHook preInstall
-            
+
             mkdir -p $out/bin $out/share/applications $out/share/icons/hicolor/128x128/apps
-            
+
             cp src-tauri/target/release/lgtv-tray-remote $out/bin/
             cp src-tauri/icons/128x128.png $out/share/icons/hicolor/128x128/apps/lgtv-tray-remote.png
-            
+
             cat > $out/share/applications/lgtv-tray-remote.desktop << EOF
 [Desktop Entry]
 Name=LG TV Remote
@@ -139,7 +139,7 @@ Icon=lgtv-tray-remote
 Type=Application
 Categories=Utility;
 EOF
-            
+
             wrapProgram $out/bin/lgtv-tray-remote \
               --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (buildInputs ++ runtimeLibs)}" \
               --set WEBKIT_DISABLE_COMPOSITING_MODE 1 \
@@ -149,7 +149,7 @@ EOF
               --prefix XDG_DATA_DIRS : "${pkgs.hicolor-icon-theme}/share" \
               --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
               --prefix GIO_EXTRA_MODULES : "${pkgs.glib-networking}/lib/gio/modules"
-            
+
             runHook postInstall
           '';
 
