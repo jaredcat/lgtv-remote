@@ -434,6 +434,14 @@ fn main() {
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
                     match event {
+                        // On Windows, clicking X sends CloseRequested and destroys the window
+                        // (losing the TV connection). Prevent close and hide instead so the
+                        // app and connection stay alive; user can reopen from tray.
+                        tauri::WindowEvent::CloseRequested { api, .. } => {
+                            api.prevent_close();
+                            let _ = window_clone.hide();
+                            WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+                        }
                         tauri::WindowEvent::Focused(false) => {
                             let _ = window_clone.hide();
                             WINDOW_VISIBLE.store(false, Ordering::SeqCst);

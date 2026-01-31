@@ -541,13 +541,20 @@ document.addEventListener('click', (e) => {
 
 // ============ Status Check ============
 
-// Check actual connection status from backend
+// Check actual connection status from backend. When window becomes visible (e.g.
+// after clicking outside on Windows, where the connection may have dropped),
+// auto-reconnect if we have saved credentials so the user doesn't have to
+// press Connect manually.
 async function checkStatus() {
   try {
     const connected = await invoke('get_status');
     if (isConnected && !connected) {
-      // We thought we were connected but we're not
+      // We thought we were connected but we're not (e.g. connection dropped
+      // while window was hidden on Windows). Auto-reconnect if we have creds.
       setStatus(false, 'Disconnected');
+      if (hasConnectionInfo()) {
+        connectTv();
+      }
     } else if (!isConnected && connected) {
       // Backend says connected
       setStatus(true, 'Connected');
