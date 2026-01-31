@@ -39,12 +39,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Download icons
-        uses: actions/download-artifact@v4
-        with:
-          name: icons
-          path: lgtv-tray-remote/src-tauri/icons/
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -305,6 +305,79 @@ async def wake_on_lan_async(name):
         return {"success": False, "error": f"WoL failed: {e}"}
 
 
+def _is_error_response(data):
+    """Return True if the response indicates an API error (e.g. 404)."""
+    return isinstance(data, dict) and "error" in data
+
+
+def _get_nested_str(obj, *keys):
+    """Safely get a nested string from a dict."""
+    for k in keys:
+        if not isinstance(obj, dict):
+            return None
+        obj = obj.get(k)
+    return obj if isinstance(obj, str) else None
+
+
+def _extract_mac_from_payload(payload):
+    """Extract MAC from various possible keys; return None if not found or invalid."""
+    if not isinstance(payload, dict):
+        return None
+    candidates = [
+        _get_nested_str(payload, "wifiInfo", "macAddress"),
+        _get_nested_str(payload, "wiredInfo", "macAddress"),
+        _get_nested_str(payload, "wifi", "macAddress"),
+        _get_nested_str(payload, "wired", "macAddress"),
+        _get_nested_str(payload, "wifi", "hwAddr"),
+        _get_nested_str(payload, "wired", "hwAddr"),
+        _get_nested_str(payload, "device_id"),
+        _get_nested_str(payload, "macAddress"),
+    ]
+    for c in candidates:
+        if c and len(c.replace(":", "").replace("-", "").replace(" ", "")) == 12:
+            return c
+    return None
+
+
+def _normalize_mac(mac):
+    """Normalize MAC to uppercase with colons (e.g. AA:BB:CC:DD:EE:FF)."""
+    if not mac:
+        return None
+    clean = mac.replace(":", "").replace("-", "").replace(" ", "").upper()
+    if len(clean) != 12 or not all(c in "0123456789ABCDEF" for c in clean):
+        return None
+    return ":".join(clean[i : i + 2] for i in range(0, 12, 2))
+
+
+async def _get_mac_from_tv(client):
+    """Try multiple webOS APIs to get MAC address; return normalized MAC or None."""
+    mac = None
+    # 1) connectionmanager/getinfo – primary source for MAC on many TVs
+    try:
+        info = await client.send_command("ssap://com.webos.service.connectionmanager/getinfo")
+        if not _is_error_response(info):
+            mac = _extract_mac_from_payload(info.get("payload", {}))
+    except Exception:
+        pass
+    # 2) connectionmanager/getStatus – some TVs expose MAC here
+    if not mac:
+        try:
+            data = await client.send_command("ssap://com.webos.service.connectionmanager/getStatus")
+            if not _is_error_response(data):
+                mac = _extract_mac_from_payload(data.get("payload", {}))
+        except Exception:
+            pass
+    # 3) system/getSystemInfo – fallback
+    if not mac:
+        try:
+            data = await client.send_command("ssap://system/getSystemInfo")
+            if not _is_error_response(data):
+                mac = _extract_mac_from_payload(data.get("payload", {}))
+        except Exception:
+            pass
+    return _normalize_mac(mac) if mac else None
+
+
 async def authenticate(ip, name, use_ssl=True):
     """Authenticate with a TV (triggers pairing prompt) and save MAC for WoL."""
     client = LGTVClient(ip, name, use_ssl)
@@ -313,24 +386,8 @@ async def authenticate(ip, name, use_ssl=True):
         await client.connect()
         await client.register()
         
-        # Try to get system info to save MAC address for Wake-on-LAN
-        mac = None
-        try:
-            info = await client.send_command("ssap://system/getSystemInfo")
-            # Try different possible MAC locations in response
-            payload = info.get("payload", {})
-            mac = payload.get("device_id") or payload.get("macAddress")
-            
-            # Also try network info
-            if not mac:
-                net_info = await client.send_command("ssap://com.webos.service.connectionmanager/getStatus")
-                wired = net_info.get("payload", {}).get("wired", {})
-                wifi = net_info.get("payload", {}).get("wifi", {})
-                mac = wired.get("macAddress") or wifi.get("macAddress")
-        except:
-            pass
+        mac = await _get_mac_from_tv(client)
         
-        # Save MAC to config if found
         if mac:
             config = load_config()
             if name in config.get("tvs", {}):

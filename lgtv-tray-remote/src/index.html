@@ -15,6 +15,7 @@
         <div class="status">
           <span id="status-dot" class="dot disconnected"></span>
           <span id="status-text">Not Connected</span>
+          <button type="button" id="status-connect-btn" class="btn btn-status-connect" onclick="connectTv()" style="display: none;">Connect</button>
         </div>
         <button class="btn-icon quit-btn" onclick="quitApp()" title="Quit">&times;</button>
       </div>
@@ -46,6 +47,18 @@
           <button class="btn primary" onclick="connectTv()">Connect</button>
         </div>
         
+        <div class="settings-divider"></div>
+        <label class="section-label">Wake-on-LAN (MAC Address)</label>
+        
+        <div class="field mac-field">
+          <input type="text" id="mac-input" placeholder="AA:BB:CC:DD:EE:FF" pattern="[0-9A-Fa-f:.\-\s]+">
+          <small class="hint" id="mac-status"></small>
+        </div>
+        <div class="button-row">
+          <button class="btn secondary" onclick="fetchMac()" title="Get MAC from TV (must be connected)">Fetch MAC</button>
+          <button class="btn secondary" onclick="saveMac()">Save MAC</button>
+        </div>
+
         <div class="settings-divider"></div>
         <label class="section-label">Global Shortcut</label>
         

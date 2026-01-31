@@ -77,7 +77,7 @@
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
-          version = "1.0.1";
+          version = "1.0.2";
 
           src = ./.;
 

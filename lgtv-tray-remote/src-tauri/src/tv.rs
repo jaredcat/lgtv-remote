@@ -363,7 +363,105 @@ impl TvConnection {
     }
 
     pub async fn get_network_info(&mut self) -> Result<Value, String> {
-        self.send_command("ssap://com.webos.service.connectionmanager/getStatus", None).await
+        // Get MAC addresses from getinfo endpoint
+        self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None).await
+    }
+
+    /// Get connection status (which interface is connected).
+    /// Tries connectionmanager/getStatus first, then com.webos.service.wifi/getstatus as fallback.
+    fn check_status_response(response: &Value) -> Result<Value, String> {
+        if response.get("error").is_some() {
+            return Err(response["error"]
+                .as_str()
+                .unwrap_or("getStatus failed")
+                .to_string());
+        }
+        Ok(response.clone())
+    }
+
+    pub async fn get_network_status(&mut self) -> Result<Value, String> {
+        // Primary: com.webos.service.connectionmanager/getStatus (wifi + wired state)
+        log::debug!("Trying connectionmanager/getStatus...");
+        let response = self
+            .send_command("ssap://com.webos.service.connectionmanager/getStatus", None)
+            .await?;
+        if let Ok(status) = Self::check_status_response(&response) {
+            log::debug!("connectionmanager/getStatus succeeded");
+            return Ok(status);
+        }
+        log::debug!("connectionmanager/getStatus failed, trying com.webos.service.wifi/getstatus...");
+        // Fallback: com.webos.service.wifi/getstatus (lowercase per webOS OSE docs)
+        let response = self
+            .send_command("ssap://com.webos.service.wifi/getstatus", None)
+            .await?;
+        if let Ok(status) = Self::check_status_response(&response) {
+            log::debug!("com.webos.service.wifi/getstatus succeeded");
+            return Ok(status);
+        }
+        log::debug!("com.webos.service.wifi/getstatus failed, trying com.palm.wifi/getStatus...");
+        // Some consumer TVs use the palm namespace
+        let response = self
+            .send_command("ssap://com.palm.wifi/getStatus", None)
+            .await?;
+        if let Ok(status) = Self::check_status_response(&response) {
+            log::debug!("com.palm.wifi/getStatus succeeded");
+            return Ok(status);
+        }
+        let err = response["error"].as_str().unwrap_or("unknown");
+        Err(err.to_string())
+    }
+
+    /// Get the MAC address of the connected network interface
+    pub async fn get_connected_mac(&mut self) -> Result<Option<String>, String> {
+        // First get MAC addresses
+        let info = self.get_network_info().await?;
+        log::debug!("Network info: {:?}", info);
+
+        let wifi_mac = info["payload"]["wifiInfo"]["macAddress"].as_str();
+        let wired_mac = info["payload"]["wiredInfo"]["macAddress"].as_str();
+
+        // Then check which interface is connected
+        // !This doesn't seem to work all these endpoints 404, keep in case it works for some TVs
+        match self.get_network_status().await {
+            Ok(status) => {
+                log::debug!("Network status: {:?}", status);
+
+                let payload = &status["payload"];
+                // connectionmanager format: wifi.state / wired.state
+                let wifi_connected = payload["wifi"]["state"].as_str() == Some("connected")
+                    || payload["wifiInfo"]["state"].as_str() == Some("connected")
+                    || payload["isConnected"].as_bool() == Some(true)
+                    // com.webos.service.wifi/getstatus: status "connectionStateChanged" or networkInfo present
+                    || payload["status"].as_str() == Some("connectionStateChanged")
+                    || status["status"].as_str() == Some("connectionStateChanged")
+                    || payload["networkInfo"].is_object()
+                    || status["networkInfo"].is_object();
+                let wired_connected = payload["wired"]["state"].as_str() == Some("connected");
+
+                // Return MAC of the connected interface
+                if wired_connected {
+                    if let Some(mac) = wired_mac {
+                        log::info!("Using wired MAC (connected): {}", mac);
+                        return Ok(Some(mac.to_string()));
+                    }
+                }
+                if wifi_connected {
+                    if let Some(mac) = wifi_mac {
+                        log::info!("Using WiFi MAC (connected): {}", mac);
+                        return Ok(Some(mac.to_string()));
+                    }
+                }
+
+                // Fallback: return any available MAC
+                log::warn!("Could not determine connected interface, using first available MAC");
+                Ok(wifi_mac.or(wired_mac).map(|s| s.to_string()))
+            }
+            Err(e) => {
+                // getStatus not supported on this TV (e.g. 404), use first available MAC
+                log::warn!("getStatus not available ({}), using first available MAC", e);
+                Ok(wifi_mac.or(wired_mac).map(|s| s.to_string()))
+            }
+        }
     }
 }
 

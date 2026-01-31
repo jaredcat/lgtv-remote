@@ -11,21 +11,42 @@ let recordedKeys = new Set();
 
 // ============ UI Helpers ============
 
+function hasConnectionInfo() {
+  return Boolean(config && config.active_tv && config.tvs?.[config.active_tv]?.client_key);
+}
+
 function setStatus(connected, text) {
   isConnected = connected;
   const dot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
-  
+  const connectBtn = document.getElementById('status-connect-btn');
+
   dot.className = 'dot ' + (connected ? 'connected' : 'disconnected');
-  statusText.textContent = text || (connected ? 'Connected' : 'Not Connected');
+  if (connected) {
+    statusText.textContent = text || 'Connected';
+    statusText.style.display = '';
+    connectBtn.style.display = 'none';
+  } else {
+    if (hasConnectionInfo()) {
+      statusText.style.display = 'none';
+      connectBtn.style.display = '';
+    } else {
+      statusText.textContent = text || 'Not Connected';
+      statusText.style.display = '';
+      connectBtn.style.display = 'none';
+    }
+  }
 }
 
 function setConnecting() {
   const dot = document.getElementById('status-dot');
   const statusText = document.getElementById('status-text');
-  
+  const connectBtn = document.getElementById('status-connect-btn');
+
   dot.className = 'dot connecting';
   statusText.textContent = 'Connecting...';
+  statusText.style.display = '';
+  connectBtn.style.display = 'none';
 }
 
 function showToast(message, type = 'info') {
@@ -60,13 +81,15 @@ function buttonFeedback(element) {
 
 // ============ TV Commands ============
 
-// Check if error indicates a disconnection
+// Check if error indicates we are no longer connected (single source of truth for UI)
 function isDisconnectError(error) {
   const msg = String(error).toLowerCase();
-  return msg.includes('disconnected') || 
-         msg.includes('not connected') || 
+  return msg.includes('disconnected') ||
+         msg.includes('not connected') ||
          msg.includes('connection closed') ||
-         msg.includes('timeout');
+         msg.includes('timeout') ||
+         msg.includes('send failed') ||
+         msg.includes('websocket error');
 }
 
 // Handle command errors - update status if disconnected
@@ -130,10 +153,33 @@ async function setMute(mute) {
   }
 }
 
+const POWER_ON_RECONNECT_INTERVAL_MS = 1000;
+const POWER_ON_RECONNECT_MAX_TRIES = 10;
+
 async function powerOn() {
   try {
     const result = await invoke('power_on');
-    showToast(result.message || 'Wake-on-LAN sent', 'success');
+    showToast(result.message || 'Wake-on-LAN sent. Connecting...', 'success');
+    // Try to connect every 1s, up to 10 times
+    let tries = 0;
+    const tryConnect = async () => {
+      tries += 1;
+      setConnecting();
+      try {
+        await invoke('connect');
+        setStatus(true, 'Connected');
+        showToast('Connected to TV', 'success');
+        return;
+      } catch (e) {
+        if (tries < POWER_ON_RECONNECT_MAX_TRIES) {
+          setTimeout(tryConnect, POWER_ON_RECONNECT_INTERVAL_MS);
+        } else {
+          setStatus(false);
+          showToast('TV did not respond after 10 tries', 'error');
+        }
+      }
+    };
+    setTimeout(tryConnect, POWER_ON_RECONNECT_INTERVAL_MS);
   } catch (e) {
     showToast(e, 'error');
   }
@@ -149,6 +195,39 @@ async function powerOff() {
     await invoke('power_off');
     setStatus(false, 'TV Off');
     showToast('TV powered off', 'success');
+  } catch (e) {
+    handleCommandError(e);
+  }
+}
+
+async function fetchMac() {
+  if (!isConnected) {
+    showToast('Connect to TV first', 'error');
+    return;
+  }
+  
+  try {
+    const result = await invoke('fetch_mac');
+    showToast(result.message || 'MAC address fetched', 'success');
+    // Reload config to update the MAC display
+    await loadConfig();
+  } catch (e) {
+    handleCommandError(e);
+  }
+}
+
+async function saveMac() {
+  const mac = document.getElementById('mac-input').value.trim();
+  if (!mac) {
+    showToast('Please enter a MAC address', 'error');
+    return;
+  }
+  
+  try {
+    const result = await invoke('set_mac', { mac });
+    showToast(result.message || 'MAC address saved', 'success');
+    // Reload config to update display
+    await loadConfig();
   } catch (e) {
     showToast(e, 'error');
   }
@@ -217,6 +296,19 @@ async function loadConfig() {
       document.getElementById('tv-name').value = config.active_tv;
       document.getElementById('tv-ip').value = tv.ip || '';
       document.getElementById('use-ssl').checked = tv.use_ssl !== false;
+      
+      // Show MAC address if saved
+      const macInput = document.getElementById('mac-input');
+      const macStatus = document.getElementById('mac-status');
+      if (tv.mac) {
+        macInput.value = tv.mac;
+        macStatus.textContent = 'MAC saved - Wake-on-LAN ready';
+        macStatus.className = 'hint success';
+      } else {
+        macInput.value = '';
+        macStatus.textContent = 'Not set - fetch while connected or enter manually';
+        macStatus.className = 'hint warning';
+      }
     }
     
     // Load shortcut settings
@@ -226,7 +318,8 @@ async function loadConfig() {
     if (config.active_tv && config.tvs[config.active_tv]?.client_key) {
       connectTv();
     } else {
-      // Show settings if no TV configured
+      // Show settings if no TV configured; ensure status shows Connect button if we have connection info
+      setStatus(false);
       document.getElementById('settings-panel').classList.remove('collapsed');
     }
   } catch (e) {
