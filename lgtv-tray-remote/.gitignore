@@ -1,11 +1,7 @@
 # Build outputs
 src-tauri/target/
+src-tauri/gen/
 dist/
-
-# Generated icons (except SVG source)
-src-tauri/icons/*.png
-src-tauri/icons/*.ico
-src-tauri/icons/*.icns
 
 # IDE
 .idea/

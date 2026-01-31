@@ -26,7 +26,7 @@ impl Default for WindowSize {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub tvs: HashMap<String, TvConfig>,
@@ -42,6 +42,18 @@ pub struct Config {
 
 fn default_shortcut() -> String {
     "Super+Shift+T".to_string()
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            tvs: HashMap::new(),
+            active_tv: None,
+            global_shortcut: default_shortcut(),
+            shortcut_enabled: false,
+            window_size: None,
+        }
+    }
 }
 
 impl Config {

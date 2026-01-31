@@ -73,7 +73,7 @@ async fn connect(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult
     let (name, tv_config) = config
         .get_active_tv()
         .ok_or("No TV configured")?;
-    
+
     let name = name.clone();
     let ip = tv_config.ip.clone();
     let client_key = tv_config.client_key.clone();
@@ -128,14 +128,17 @@ async fn authenticate(
         config.update_client_key(&name, key.clone());
 
         // Try to get MAC address for Wake-on-LAN
-        if let Ok(info) = tv.get_network_info().await {
-            let mac = info["payload"]["wired"]["macAddress"]
-                .as_str()
-                .or_else(|| info["payload"]["wifi"]["macAddress"].as_str())
-                .map(|s| s.to_string());
-
-            if let Some(mac) = mac {
+        // We need the MAC of the connected interface (wifi or wired)
+        match tv.get_connected_mac().await {
+            Ok(Some(mac)) => {
+                log::info!("Saved MAC address: {}", mac);
                 config.update_mac(&name, mac);
+            }
+            Ok(None) => {
+                log::warn!("Could not find MAC address in network info");
+            }
+            Err(e) => {
+                log::warn!("Failed to get MAC address: {}", e);
             }
         }
 
@@ -217,9 +220,67 @@ async fn power_on(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResul
     let mac = tv_config
         .mac
         .as_ref()
-        .ok_or("MAC address not saved. Authenticate first while TV is on.")?;
+        .ok_or("MAC address not saved. Connect to the TV while it's on and click 'Fetch MAC', or set it manually in settings.")?;
 
     tv::wake_on_lan(mac)
+}
+
+#[tauri::command]
+async fn fetch_mac(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
+    let config = state.config.lock().await;
+    let (name, _) = config.get_active_tv().ok_or("No TV configured")?;
+    let name = name.clone();
+    drop(config);
+
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected. Connect to the TV first.".to_string());
+    }
+
+    // Get MAC of the connected interface (wifi or wired)
+    match tv.get_connected_mac().await {
+        Ok(Some(mac)) => {
+            let mut config = state.config.lock().await;
+            config.update_mac(&name, mac.clone());
+            config.save()?;
+            Ok(CommandResult::ok_with_message(&format!("MAC address saved: {}", mac)))
+        }
+        Ok(None) => {
+            Err("Could not find MAC address in TV response. Please enter manually.".to_string())
+        }
+        Err(e) => {
+            Err(format!("Failed to get MAC address: {}. Please enter manually.", e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn set_mac(
+    state: tauri::State<'_, Arc<AppState>>,
+    mac: String,
+) -> Result<CommandResult, String> {
+    // Validate MAC format (basic check)
+    let mac_clean = mac.replace([':', '-', ' '], "");
+    if mac_clean.len() != 12 || !mac_clean.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("Invalid MAC address format. Use format like AA:BB:CC:DD:EE:FF or AABBCCDDEEFF".to_string());
+    }
+
+    let mut config = state.config.lock().await;
+    let (name, _) = config.get_active_tv().ok_or("No TV configured")?;
+    let name = name.clone();
+
+    // Normalize to colon-separated format
+    let mac_formatted = mac_clean
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<_>>()
+        .join(":");
+
+    config.update_mac(&name, mac_formatted.clone());
+    config.save()?;
+
+    Ok(CommandResult::ok_with_message(&format!("MAC address set to: {}", mac_formatted)))
 }
 
 #[tauri::command]
@@ -250,27 +311,27 @@ async fn set_shortcut(
 
     // Update the registered shortcut
     update_global_shortcut(&app, &shortcut, enabled)?;
-    
+
     Ok(())
 }
 
 fn update_global_shortcut(app: &AppHandle, shortcut_str: &str, enabled: bool) -> Result<(), String> {
     let manager = app.global_shortcut();
-    
+
     // Unregister all existing shortcuts first
     manager.unregister_all().map_err(|e| e.to_string())?;
-    
+
     if enabled && !shortcut_str.is_empty() {
         let shortcut: Shortcut = shortcut_str.parse()
             .map_err(|e| format!("Invalid shortcut '{}': {}", shortcut_str, e))?;
-        
+
         let app_handle = app.clone();
         manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
             // Only toggle on key release to avoid double-firing
             if event.state != ShortcutState::Released {
                 return;
             }
-            
+
             if let Some(window) = app_handle.get_webview_window("main") {
                 let currently_visible = WINDOW_VISIBLE.load(Ordering::SeqCst);
                 if currently_visible {
@@ -284,7 +345,7 @@ fn update_global_shortcut(app: &AppHandle, shortcut_str: &str, enabled: bool) ->
             }
         }).map_err(|e| format!("Failed to register shortcut: {}", e))?;
     }
-    
+
     Ok(())
 }
 
@@ -365,10 +426,10 @@ fn main() {
                         height: size.height,
                     }));
                 }
-                
+
                 let _ = window.hide();
                 WINDOW_VISIBLE.store(false, Ordering::SeqCst);
-                
+
                 // Handle window events
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
@@ -461,6 +522,8 @@ fn main() {
             set_mute,
             power_off,
             power_on,
+            fetch_mac,
+            set_mac,
             quit_app,
             get_shortcut_settings,
             set_shortcut,
