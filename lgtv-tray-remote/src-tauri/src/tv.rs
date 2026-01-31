@@ -281,9 +281,10 @@ impl TvConnection {
         });
 
         let mut ws = ws.lock().await;
-        ws.send(Message::Text(msg.to_string()))
-            .await
-            .map_err(|e| format!("Send failed: {}", e))?;
+        if let Err(e) = ws.send(Message::Text(msg.to_string())).await {
+            self.connected = false;
+            return Err(format!("Send failed (disconnected): {}", e));
+        }
 
         // Wait for response
         let response = tokio::time::timeout(std::time::Duration::from_secs(3), async {
@@ -300,25 +301,42 @@ impl TvConnection {
             }
             Err("Connection closed".to_string())
         })
-        .await
-        .map_err(|_| "Command timeout".to_string())??;
+        .await;
 
-        Ok(response)
+        match response {
+            Ok(Ok(data)) => Ok(data),
+            Ok(Err(e)) => {
+                self.connected = false;
+                Err(e)
+            }
+            Err(_) => {
+                // Timeout - connection may be dead
+                self.connected = false;
+                Err("Command timeout (disconnected)".to_string())
+            }
+        }
     }
 
     pub async fn send_button(&mut self, button: &str) -> Result<CommandResult, String> {
         // Reconnect input socket if needed
         if self.input_ws.is_none() {
-            self.connect_input_socket().await?;
+            if let Err(e) = self.connect_input_socket().await {
+                self.connected = false;
+                return Err(format!("Failed to connect input socket: {}", e));
+            }
         }
 
         let input_ws = self.input_ws.as_ref().ok_or("Input socket not available")?;
         let cmd = format!("type:button\nname:{}\n\n", button.to_uppercase());
 
         let mut ws = input_ws.lock().await;
-        ws.send(Message::Text(cmd))
-            .await
-            .map_err(|e| format!("Button send failed: {}", e))?;
+        if let Err(e) = ws.send(Message::Text(cmd)).await {
+            // Input socket died, clear it so we reconnect next time
+            drop(ws);
+            self.input_ws = None;
+            self.connected = false;
+            return Err(format!("Button send failed (disconnected): {}", e));
+        }
 
         Ok(CommandResult::ok())
     }

@@ -350,7 +350,7 @@ fn main() {
         config: Mutex::new(Config::load()),
     });
 
-    let app = tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(state.clone())

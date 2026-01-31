@@ -60,6 +60,23 @@ function buttonFeedback(element) {
 
 // ============ TV Commands ============
 
+// Check if error indicates a disconnection
+function isDisconnectError(error) {
+  const msg = String(error).toLowerCase();
+  return msg.includes('disconnected') || 
+         msg.includes('not connected') || 
+         msg.includes('connection closed') ||
+         msg.includes('timeout');
+}
+
+// Handle command errors - update status if disconnected
+function handleCommandError(e) {
+  showToast(e, 'error');
+  if (isDisconnectError(e)) {
+    setStatus(false, 'Disconnected');
+  }
+}
+
 async function sendButton(button) {
   if (!isConnected) {
     showToast('Not connected', 'error');
@@ -69,7 +86,7 @@ async function sendButton(button) {
   try {
     await invoke('send_button', { button });
   } catch (e) {
-    showToast(e, 'error');
+    handleCommandError(e);
   }
 }
 
@@ -82,7 +99,7 @@ async function volumeUp() {
   try {
     await invoke('volume_up');
   } catch (e) {
-    showToast(e, 'error');
+    handleCommandError(e);
   }
 }
 
@@ -95,7 +112,7 @@ async function volumeDown() {
   try {
     await invoke('volume_down');
   } catch (e) {
-    showToast(e, 'error');
+    handleCommandError(e);
   }
 }
 
@@ -109,7 +126,7 @@ async function setMute(mute) {
     await invoke('set_mute', { mute });
     showToast(mute ? 'Muted' : 'Unmuted', 'success');
   } catch (e) {
-    showToast(e, 'error');
+    handleCommandError(e);
   }
 }
 
@@ -429,9 +446,34 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// ============ Status Check ============
+
+// Check actual connection status from backend
+async function checkStatus() {
+  try {
+    const connected = await invoke('get_status');
+    if (isConnected && !connected) {
+      // We thought we were connected but we're not
+      setStatus(false, 'Disconnected');
+    } else if (!isConnected && connected) {
+      // Backend says connected
+      setStatus(true, 'Connected');
+    }
+  } catch (e) {
+    console.error('Status check failed:', e);
+  }
+}
+
 // ============ Init ============
 
 document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   setupShortcutRecorder();
+});
+
+// Check status when window becomes visible (user clicked tray icon)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    checkStatus();
+  }
 });
