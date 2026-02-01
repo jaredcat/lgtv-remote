@@ -3,6 +3,22 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+/// Per-action shortcut: key combination and whether it is a global hotkey.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionShortcutConfig {
+    pub shortcut: String,
+    pub global: bool,
+}
+
+impl Default for ActionShortcutConfig {
+    fn default() -> Self {
+        Self {
+            shortcut: String::new(),
+            global: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TvConfig {
     pub ip: String,
@@ -36,8 +52,33 @@ pub struct Config {
     pub global_shortcut: String,
     #[serde(default)]
     pub shortcut_enabled: bool,
+    /// Action id -> shortcut config (shortcut string, global). Keys match frontend ACTION_IDS.
+    #[serde(default = "default_action_shortcuts")]
+    pub action_shortcuts: HashMap<String, ActionShortcutConfig>,
     #[serde(default)]
     pub window_size: Option<WindowSize>,
+}
+
+fn default_action_shortcuts() -> HashMap<String, ActionShortcutConfig> {
+    let mut m = HashMap::new();
+    let default = |shortcut: &str, global: bool| ActionShortcutConfig {
+        shortcut: shortcut.to_string(),
+        global,
+    };
+    m.insert("up".to_string(), default("Up", false));
+    m.insert("down".to_string(), default("Down", false));
+    m.insert("left".to_string(), default("Left", false));
+    m.insert("right".to_string(), default("Right", false));
+    m.insert("enter".to_string(), default("Return", false));
+    m.insert("back".to_string(), default("Backspace", false));
+    m.insert("volume_up".to_string(), default("=", false));
+    m.insert("volume_down".to_string(), default("-", false));
+    m.insert("mute".to_string(), default("Shift+-", false));
+    m.insert("unmute".to_string(), default("Shift+=", false));
+    m.insert("power_on".to_string(), default("F7", false));
+    m.insert("power_off".to_string(), default("F8", false));
+    m.insert("home".to_string(), default("Home", false));
+    m
 }
 
 fn default_shortcut() -> String {
@@ -51,6 +92,7 @@ impl Default for Config {
             active_tv: None,
             global_shortcut: default_shortcut(),
             shortcut_enabled: false,
+            action_shortcuts: default_action_shortcuts(),
             window_size: None,
         }
     }

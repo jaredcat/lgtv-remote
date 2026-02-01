@@ -4,14 +4,15 @@
 mod config;
 mod tv;
 
-use config::{Config, TvConfig, WindowSize};
+use config::{ActionShortcutConfig, Config, TvConfig, WindowSize};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{
     image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, PhysicalPosition, WebviewWindow,
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
@@ -22,6 +23,27 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 // Track window visibility ourselves since is_visible() can be unreliable
 static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
+
+// When true, cancel the pending hide scheduled on Focused(false) (e.g. user is resizing).
+static CANCEL_PENDING_HIDE: AtomicBool = AtomicBool::new(false);
+
+/// On Windows with decorations: false, the OS adds ~16×9 to inner size to get outer.
+/// We store inner size in config so set_size(saved) reproduces the same window.
+#[cfg(target_os = "windows")]
+const OUTER_FRAME_W: u32 = 16;
+#[cfg(target_os = "windows")]
+const OUTER_FRAME_H: u32 = 9;
+#[cfg(not(target_os = "windows"))]
+const OUTER_FRAME_W: u32 = 0;
+#[cfg(not(target_os = "windows"))]
+const OUTER_FRAME_H: u32 = 0;
+
+fn outer_to_inner_size(outer_w: u32, outer_h: u32) -> (u32, u32) {
+    (
+        outer_w.saturating_sub(OUTER_FRAME_W),
+        outer_h.saturating_sub(OUTER_FRAME_H),
+    )
+}
 
 struct AppState {
     tv: Mutex<TvConnection>,
@@ -324,6 +346,50 @@ async fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
 
+/// True when built with `cargo tauri dev` (debug profile).
+#[tauri::command]
+fn is_dev() -> bool {
+    cfg!(debug_assertions)
+}
+
+/// Current main window outer size in physical pixels. For dev UI.
+#[tauri::command]
+fn get_window_size(app: tauri::AppHandle) -> Result<(u32, u32), String> {
+    app.get_webview_window("main")
+        .and_then(|w| w.outer_size().ok())
+        .map(|s| (s.width, s.height))
+        .ok_or_else(|| "Window not available".to_string())
+}
+
+#[tauri::command]
+async fn reset_window_size(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    {
+        let mut config = state.config.lock().await;
+        config.window_size = None;
+        config.save()?;
+    }
+    // Use default size from tauri.conf.json (app.windows[0])
+    let (width, height) = app
+        .config()
+        .app
+        .windows
+        .first()
+        .map(|w| (w.width as u32, w.height as u32))
+        .unwrap_or((330, 520));
+    if let Some(window) = app.get_webview_window("main") {
+        // set_size sets the inner (content) size. get_window_size returns outer_size(), so on
+        // Windows the OS adds a few pixels for the undecorated frame (e.g. 400×550 → 416×559).
+        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+            width,
+            height,
+        }));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn get_shortcut_settings(state: tauri::State<'_, Arc<AppState>>) -> Result<(String, bool), String> {
     let config = state.config.lock().await;
@@ -337,49 +403,146 @@ async fn set_shortcut(
     shortcut: String,
     enabled: bool,
 ) -> Result<(), String> {
-    // Update config
+    if enabled && !shortcut.is_empty() {
+        shortcut.parse::<Shortcut>().map_err(|e| {
+            format!(
+                "Invalid shortcut '{}': {}. Use modifiers first and only one main key (e.g. Shift+Alt+K)",
+                shortcut, e
+            )
+        })?;
+        if !shortcut_has_modifier(&shortcut) {
+            return Err(
+                "Global shortcut must include a modifier (Ctrl, Alt, Shift, or Super) so it doesn't capture keys during normal typing.".to_string()
+            );
+        }
+    }
     {
         let mut config = state.config.lock().await;
         config.global_shortcut = shortcut.clone();
         config.shortcut_enabled = enabled;
         config.save()?;
     }
-
-    // Update the registered shortcut
-    update_global_shortcut(&app, &shortcut, enabled)?;
-
+    register_all_global_shortcuts(&app)?;
     Ok(())
 }
 
-fn update_global_shortcut(app: &AppHandle, shortcut_str: &str, enabled: bool) -> Result<(), String> {
-    let manager = app.global_shortcut();
+#[tauri::command]
+async fn get_action_shortcuts(state: tauri::State<'_, Arc<AppState>>) -> Result<HashMap<String, ActionShortcutConfig>, String> {
+    let config = state.config.lock().await;
+    Ok(config.action_shortcuts.clone())
+}
 
-    // Unregister all existing shortcuts first
+#[tauri::command]
+async fn set_action_shortcuts(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    shortcuts: HashMap<String, ActionShortcutConfig>,
+) -> Result<(), String> {
+    // Validate: any shortcut with global=true must have a modifier
+    let missing: Vec<String> = shortcuts
+        .iter()
+        .filter(|(_, ac)| ac.global && !ac.shortcut.trim().is_empty())
+        .filter(|(_, ac)| !shortcut_has_modifier(&ac.shortcut))
+        .map(|(id, _)| id.clone())
+        .collect();
+    if !missing.is_empty() {
+        return Err(format!(
+            "Global shortcuts must include a modifier (Ctrl, Alt, Shift, or Super): {}",
+            missing.join(", ")
+        ));
+    }
+    {
+        let mut config = state.config.lock().await;
+        config.action_shortcuts = shortcuts;
+        config.save()?;
+    }
+    register_all_global_shortcuts(&app)?;
+    Ok(())
+}
+
+/// Modifier key names (case-insensitive). Global hotkeys must include at least one
+/// so they don't capture keys during normal typing.
+const GLOBAL_MODIFIERS: &[&str] = &["ctrl", "control", "alt", "shift", "super", "command", "meta"];
+
+fn shortcut_has_modifier(s: &str) -> bool {
+    s.split('+')
+        .map(|p| p.trim().to_lowercase())
+        .any(|p| GLOBAL_MODIFIERS.contains(&p.as_str()))
+}
+
+/// Registers the toggle-window shortcut and all action shortcuts that have global=true.
+fn register_all_global_shortcuts(app: &AppHandle) -> Result<(), String> {
+    let config = Config::load();
+    let manager = app.global_shortcut();
     manager.unregister_all().map_err(|e| e.to_string())?;
 
-    if enabled && !shortcut_str.is_empty() {
-        let shortcut: Shortcut = shortcut_str.parse()
-            .map_err(|e| format!("Invalid shortcut '{}': {}", shortcut_str, e))?;
+    // 1. Toggle-window shortcut (skip if invalid so saving action shortcuts doesn't fail)
+    if config.shortcut_enabled && !config.global_shortcut.is_empty() {
+        if shortcut_has_modifier(&config.global_shortcut)
+            && let Ok(shortcut) = config.global_shortcut.parse::<Shortcut>()
+        {
+            let app_handle = app.clone();
+            if let Err(e) = manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
+                if event.state != ShortcutState::Released {
+                    return;
+                }
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let currently_visible = WINDOW_VISIBLE.load(Ordering::SeqCst);
+                    if currently_visible {
+                        let _ = window.hide();
+                        WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+                    } else {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                        WINDOW_VISIBLE.store(true, Ordering::SeqCst);
+                    }
+                }
+            }) {
+                log::warn!("Failed to register toggle shortcut: {}", e);
+            }
+        } else if !shortcut_has_modifier(&config.global_shortcut) {
+            log::warn!(
+                "Toggle shortcut '{}' has no modifier; global shortcut not registered",
+                config.global_shortcut
+            );
+        } else {
+            log::warn!(
+                "Invalid toggle shortcut '{}': modifiers first and only one main key (e.g. Shift+Alt+K)",
+                config.global_shortcut
+            );
+        }
+    }
 
+    // 2. Action shortcuts (global hotkeys that run a command)
+    for (action_id, ac) in &config.action_shortcuts {
+        if !ac.global || ac.shortcut.is_empty() || !shortcut_has_modifier(&ac.shortcut) {
+            if ac.global && !ac.shortcut.is_empty() && !shortcut_has_modifier(&ac.shortcut) {
+                log::warn!(
+                    "Action shortcut '{}' for {} has no modifier; not registered as global",
+                    ac.shortcut, action_id
+                );
+            }
+            continue;
+        }
+        let shortcut: Shortcut = match ac.shortcut.parse() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("Invalid action shortcut '{}' for {}: {}", ac.shortcut, action_id, e);
+                continue;
+            }
+        };
+        let action_id_emit = action_id.clone();
         let app_handle = app.clone();
-        manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
-            // Only toggle on key release to avoid double-firing
+        if let Err(e) = manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
             if event.state != ShortcutState::Released {
                 return;
             }
-
             if let Some(window) = app_handle.get_webview_window("main") {
-                let currently_visible = WINDOW_VISIBLE.load(Ordering::SeqCst);
-                if currently_visible {
-                    let _ = window.hide();
-                    WINDOW_VISIBLE.store(false, Ordering::SeqCst);
-                } else {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                    WINDOW_VISIBLE.store(true, Ordering::SeqCst);
-                }
+                let _ = window.emit("run-command", &action_id_emit);
             }
-        }).map_err(|e| format!("Failed to register shortcut: {}", e))?;
+        }) {
+            log::warn!("Failed to register action shortcut {}: {}", action_id, e);
+        }
     }
 
     Ok(())
@@ -476,6 +639,7 @@ fn main() {
 
                 // Handle window events
                 let window_clone = window.clone();
+                let app_handle = app.app_handle().clone();
                 window.on_window_event(move |event| {
                     match event {
                         // On Windows, clicking X sends CloseRequested and destroys the window
@@ -486,20 +650,48 @@ fn main() {
                             let _ = window_clone.hide();
                             WINDOW_VISIBLE.store(false, Ordering::SeqCst);
                         }
+                        // Hide when focus is lost (e.g. user clicked outside). On Windows, use a
+                        // short delay and cancel if the window gets focus back or Resized/Moved.
                         tauri::WindowEvent::Focused(false) => {
-                            let _ = window_clone.hide();
-                            WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+                            #[cfg(target_os = "windows")]
+                            {
+                                CANCEL_PENDING_HIDE.store(false, Ordering::SeqCst);
+                                let w = window_clone.clone();
+                                let a = app_handle.clone();
+                                std::thread::spawn(move || {
+                                    std::thread::sleep(std::time::Duration::from_millis(200));
+                                    if !CANCEL_PENDING_HIDE.load(Ordering::SeqCst) {
+                                        let _ = a.run_on_main_thread(move || {
+                                            let _ = w.hide();
+                                            WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+                                        });
+                                    }
+                                });
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                let _ = window_clone.hide();
+                                WINDOW_VISIBLE.store(false, Ordering::SeqCst);
+                            }
+                        }
+                        tauri::WindowEvent::Focused(true) => {
+                            #[cfg(target_os = "windows")]
+                            CANCEL_PENDING_HIDE.store(true, Ordering::SeqCst);
                         }
                         tauri::WindowEvent::Resized(size) => {
-                            // Save new window size
+                            #[cfg(target_os = "windows")]
+                            CANCEL_PENDING_HIDE.store(true, Ordering::SeqCst);
+                            // Save inner size so set_size(saved) reproduces the same outer size
                             if size.width > 0 && size.height > 0 {
+                                let (w, h) = outer_to_inner_size(size.width, size.height);
                                 let mut config = Config::load();
-                                config.window_size = Some(WindowSize {
-                                    width: size.width,
-                                    height: size.height,
-                                });
+                                config.window_size = Some(WindowSize { width: w, height: h });
                                 let _ = config.save();
                             }
+                        }
+                        tauri::WindowEvent::Moved(_) => {
+                            #[cfg(target_os = "windows")]
+                            CANCEL_PENDING_HIDE.store(true, Ordering::SeqCst);
                         }
                         _ => {}
                     }
@@ -550,18 +742,16 @@ fn main() {
                 })
                 .build(app)?;
 
-            // Register global shortcut if enabled (load config directly since we're in sync context)
-            let config = Config::load();
-            if config.shortcut_enabled {
-                if let Err(e) = update_global_shortcut(app.app_handle(), &config.global_shortcut, true) {
-                    log::warn!("Failed to register global shortcut: {}", e);
-                }
+            if let Err(e) = register_all_global_shortcuts(app.app_handle()) {
+                log::warn!("Failed to register global shortcuts: {}", e);
             }
 
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_app_version,
+            is_dev,
+            get_window_size,
             get_config,
             save_tv,
             set_active_tv,
@@ -580,6 +770,9 @@ fn main() {
             quit_app,
             get_shortcut_settings,
             set_shortcut,
+            get_action_shortcuts,
+            set_action_shortcuts,
+            reset_window_size,
             get_autostart_enabled,
             set_autostart_enabled,
         ])

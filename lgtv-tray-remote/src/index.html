@@ -69,7 +69,10 @@
           </label>
         </div>
         <div class="field shortcut-field">
-          <input type="text" id="shortcut-input" placeholder="Click and press keys..." readonly>
+          <div class="shortcut-input-row">
+            <input type="text" id="shortcut-input" placeholder="Click and press keys..." readonly>
+            <button type="button" class="btn-clear-shortcut" onclick="clearGlobalShortcut()" title="Clear shortcut" aria-label="Clear shortcut">&times;</button>
+          </div>
           <small class="hint" id="shortcut-hint">Click to record shortcut</small>
         </div>
 
@@ -81,7 +84,11 @@
           </label>
         </div>
 
-        <div class="app-version" id="app-version"></div>
+        <div class="app-version-row">
+          <span id="app-version" class="app-version"></span>
+          <span id="window-size-dev" class="window-size-dev" aria-hidden="true"></span>
+          <button type="button" class="btn-link btn-reset-window" onclick="resetWindowSize()" title="Reset window to default size">Reset window size</button>
+        </div>
       </div>
     </section>
 
@@ -128,10 +135,17 @@
       </button>
     </section>
 
-    <!-- Keyboard hint -->
-    <footer>
-      <small>Arrows, Enter, Backspace, +/-, Shift+=Unmute, Shift+-=Mute</small>
-    </footer>
+    <!-- Keyboard Shortcuts (collapsible) -->
+    <section id="shortcuts-panel" class="shortcuts-panel collapsed">
+      <button class="shortcuts-toggle" type="button" onclick="toggleShortcuts()">
+        <span class="icon">&#x2328;</span> Keyboard shortcuts
+        <span class="arrow">&#x25BC;</span>
+      </button>
+      <div class="shortcuts-content">
+        <small class="hint shortcuts-hint">Click a field and press keys. Check &quot;Global&quot; to use the shortcut when the window is closed.</small>
+        <div id="shortcuts-list" class="shortcuts-list"></div>
+      </div>
+    </section>
   </div>
 
   <script src="main.js"></script>

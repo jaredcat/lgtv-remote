@@ -1,6 +1,11 @@
 // Tauri API is injected globally via withGlobalTauri in tauri.conf.json
 const invoke = window.__TAURI__.core.invoke;
 
+// On Windows (decorations: false), outer = inner + (16, 9). Used so dev size display
+// matches tauri.conf.json (inner size). Non-Windows uses 0 so display = outer.
+const OUTER_FRAME_W = 16;
+const OUTER_FRAME_H = 9;
+
 // ============ State ============
 let isConnected = false;
 let config = null;
@@ -8,6 +13,28 @@ let shortcutEnabled = false;
 let currentShortcut = '';
 let isRecordingShortcut = false;
 let recordedKeys = new Set();
+
+// Action shortcuts: id -> { shortcut, global }. shortcutToAction maps shortcut string -> id for keydown.
+let actionShortcuts = {};
+let shortcutToAction = {};
+let isRecordingActionShortcut = null; // action id when recording, else null
+let recordedActionKeys = new Set();
+
+const ACTIONS = [
+  { id: 'up', label: 'Up', defaultShortcut: 'Up' },
+  { id: 'down', label: 'Down', defaultShortcut: 'Down' },
+  { id: 'left', label: 'Left', defaultShortcut: 'Left' },
+  { id: 'right', label: 'Right', defaultShortcut: 'Right' },
+  { id: 'enter', label: 'OK / Enter', defaultShortcut: 'Return' },
+  { id: 'back', label: 'Back', defaultShortcut: 'Backspace' },
+  { id: 'volume_up', label: 'Volume Up', defaultShortcut: '=' },
+  { id: 'volume_down', label: 'Volume Down', defaultShortcut: '-' },
+  { id: 'mute', label: 'Mute', defaultShortcut: 'Shift+-' },
+  { id: 'unmute', label: 'Unmute', defaultShortcut: 'Shift+=' },
+  { id: 'power_on', label: 'Power On', defaultShortcut: 'F7' },
+  { id: 'power_off', label: 'Power Off', defaultShortcut: 'F8' },
+  { id: 'home', label: 'Home', defaultShortcut: 'Home' },
+];
 
 // ============ UI Helpers ============
 
@@ -71,6 +98,11 @@ function showToast(message, type = 'info') {
 
 function toggleSettings() {
   const panel = document.getElementById('settings-panel');
+  panel.classList.toggle('collapsed');
+}
+
+function toggleShortcuts() {
+  const panel = document.getElementById('shortcuts-panel');
   panel.classList.toggle('collapsed');
 }
 
@@ -313,6 +345,7 @@ async function loadConfig() {
     
     // Load shortcut settings
     await loadShortcutSettings();
+    await loadActionShortcuts();
 
     // Load autostart and version
     await loadAutostartSettings();
@@ -349,6 +382,46 @@ async function loadVersion() {
     document.getElementById('app-version').textContent = `Version ${version}`;
   } catch (e) {
     console.error('Failed to load version:', e);
+  }
+  startDevWindowSize();
+}
+
+let devWindowSizeInterval = null;
+
+async function startDevWindowSize() {
+  if (devWindowSizeInterval) {
+    clearInterval(devWindowSizeInterval);
+    devWindowSizeInterval = null;
+  }
+  try {
+    const dev = await invoke('is_dev');
+    const el = document.getElementById('window-size-dev');
+    if (!dev || !el) return;
+    el.setAttribute('aria-hidden', 'false');
+    const update = async () => {
+      try {
+        // Returns the main window's outer size (total window, including any OS frame).
+        const [w, h] = await invoke('get_window_size');
+        const innerW = Math.max(0, (w || 0) - OUTER_FRAME_W);
+        const innerH = Math.max(0, (h || 0) - OUTER_FRAME_H);
+        el.textContent = ` · ${innerW} × ${innerH}`;
+      } catch (_) {
+        el.textContent = '';
+      }
+    };
+    await update();
+    devWindowSizeInterval = setInterval(update, 200);
+  } catch (_) {
+    // not dev or is_dev not available
+  }
+}
+
+async function resetWindowSize() {
+  try {
+    await invoke('reset_window_size');
+    showToast('Window size reset to default', 'success');
+  } catch (e) {
+    showToast(e, 'error');
   }
 }
 
@@ -390,13 +463,21 @@ async function saveShortcut(shortcut, enabled) {
     await invoke('set_shortcut', { shortcut, enabled });
     currentShortcut = shortcut;
     shortcutEnabled = enabled;
-    showToast(enabled ? `Shortcut: ${shortcut}` : 'Shortcut disabled', 'success');
+    showToast(enabled && shortcut ? `Shortcut: ${shortcut}` : shortcut ? 'Shortcut disabled' : 'Shortcut cleared', 'success');
   } catch (e) {
     showToast(e, 'error');
     // Revert UI on error
     document.getElementById('shortcut-input').value = currentShortcut;
     document.getElementById('shortcut-enabled').checked = shortcutEnabled;
   }
+}
+
+function clearGlobalShortcut() {
+  const input = document.getElementById('shortcut-input');
+  input.value = '';
+  currentShortcut = '';
+  const enabled = document.getElementById('shortcut-enabled').checked;
+  saveShortcut('', enabled);
 }
 
 // Shortcut recorder
@@ -438,10 +519,10 @@ function setupShortcutRecorder() {
     e.preventDefault();
     e.stopPropagation();
     
-    // Map key to Tauri format
+    // Record only the current combination (modifiers + this key), not accumulated keys
     const key = mapKeyToTauri(e);
     if (key) {
-      recordedKeys.add(key);
+      recordedKeys = eventToKeySet(e);
       updateShortcutDisplay(input);
     }
   });
@@ -494,7 +575,7 @@ function updateShortcutDisplay(input) {
   const modOrder = ['Super', 'Ctrl', 'Alt', 'Shift'];
   const mods = [];
   const keys = [];
-  
+
   for (const key of recordedKeys) {
     if (modOrder.includes(key)) {
       mods.push(key);
@@ -502,66 +583,255 @@ function updateShortcutDisplay(input) {
       keys.push(key);
     }
   }
-  
+
   // Sort modifiers in standard order
   mods.sort((a, b) => modOrder.indexOf(a) - modOrder.indexOf(b));
-  
+
   const shortcut = [...mods, ...keys].join('+');
   input.value = shortcut;
+}
+
+function buildShortcutFromKeys(keysSet) {
+  const modOrder = ['Super', 'Ctrl', 'Alt', 'Shift'];
+  const mods = [];
+  const keys = [];
+  for (const key of keysSet) {
+    if (modOrder.includes(key)) mods.push(key);
+    else keys.push(key);
+  }
+  mods.sort((a, b) => modOrder.indexOf(a) - modOrder.indexOf(b));
+  return [...mods, ...keys].join('+');
+}
+
+function eventToShortcutString(e) {
+  const keys = new Set();
+  if (e.metaKey) keys.add('Super');
+  if (e.ctrlKey) keys.add('Ctrl');
+  if (e.altKey) keys.add('Alt');
+  if (e.shiftKey) keys.add('Shift');
+  const key = mapKeyToTauri(e);
+  if (key) keys.add(key);
+  return buildShortcutFromKeys(keys);
+}
+
+/** Build the set of keys (for recording) from a single keydown: current modifiers + the key. */
+function eventToKeySet(e) {
+  const keys = new Set();
+  if (e.metaKey) keys.add('Super');
+  if (e.ctrlKey) keys.add('Ctrl');
+  if (e.altKey) keys.add('Alt');
+  if (e.shiftKey) keys.add('Shift');
+  const key = mapKeyToTauri(e);
+  if (key) keys.add(key);
+  return keys;
+}
+
+// ============ Action Shortcuts ============
+
+function buildShortcutToActionMap() {
+  shortcutToAction = {};
+  for (const [id, ac] of Object.entries(actionShortcuts)) {
+    if (ac.shortcut && ac.shortcut.trim()) {
+      shortcutToAction[ac.shortcut.trim()] = id;
+    }
+  }
+}
+
+async function loadActionShortcuts() {
+  try {
+    const loaded = await invoke('get_action_shortcuts');
+    actionShortcuts = {};
+    for (const a of ACTIONS) {
+      const c = loaded[a.id];
+      actionShortcuts[a.id] = {
+        shortcut: (c && c.shortcut != null) ? c.shortcut : a.defaultShortcut,
+        global: (c && c.global != null) ? c.global : false,
+      };
+    }
+    buildShortcutToActionMap();
+    renderShortcutsList();
+    setupActionShortcutRecorders();
+  } catch (e) {
+    console.error('Failed to load action shortcuts:', e);
+  }
+}
+
+function renderShortcutsList() {
+  const list = document.getElementById('shortcuts-list');
+  list.innerHTML = '';
+  for (const a of ACTIONS) {
+    const ac = actionShortcuts[a.id] || { shortcut: a.defaultShortcut, global: false };
+    const row = document.createElement('div');
+    row.className = 'shortcut-row';
+    row.dataset.actionId = a.id;
+    row.innerHTML = `
+      <label class="shortcut-label">${escapeHtml(a.label)}</label>
+      <input type="text" class="shortcut-input-action" data-action-id="${escapeHtml(a.id)}" value="${escapeHtml(ac.shortcut)}" placeholder="Click and press keys..." readonly>
+      <button type="button" class="btn-clear-shortcut" data-action-id="${escapeHtml(a.id)}" title="Clear shortcut; double-click to reset to default" aria-label="Clear shortcut; double-click to reset to default">&times;</button>
+      <label class="shortcut-global-label">
+        <input type="checkbox" class="shortcut-global-cb" data-action-id="${escapeHtml(a.id)}" ${ac.global ? 'checked' : ''}>
+        Global
+      </label>
+    `;
+    list.appendChild(row);
+  }
+  list.querySelectorAll('.shortcut-global-cb').forEach(cb => {
+    cb.addEventListener('change', onActionGlobalChange);
+  });
+  list.querySelectorAll('.btn-clear-shortcut').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      if (e.detail === 2) return; // let dblclick handle reset to default
+      const id = e.target.dataset.actionId;
+      if (!id || !actionShortcuts[id]) return;
+      actionShortcuts[id].shortcut = '';
+      actionShortcuts[id].global = false;
+      const row = e.target.closest('.shortcut-row');
+      if (row) {
+        const input = row.querySelector('.shortcut-input-action');
+        const cb = row.querySelector('.shortcut-global-cb');
+        if (input) input.value = '';
+        if (cb) cb.checked = false;
+      }
+      buildShortcutToActionMap();
+      saveActionShortcuts();
+    });
+    btn.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      const id = e.target.dataset.actionId;
+      if (!id || !actionShortcuts[id]) return;
+      const action = ACTIONS.find(a => a.id === id);
+      const defaultShortcut = action ? action.defaultShortcut : '';
+      actionShortcuts[id].shortcut = defaultShortcut;
+      actionShortcuts[id].global = false;
+      const row = e.target.closest('.shortcut-row');
+      if (row) {
+        const input = row.querySelector('.shortcut-input-action');
+        const cb = row.querySelector('.shortcut-global-cb');
+        if (input) input.value = defaultShortcut;
+        if (cb) cb.checked = false;
+      }
+      buildShortcutToActionMap();
+      saveActionShortcuts();
+      showToast('Reset to default', 'success');
+    });
+  });
+}
+
+function escapeHtml(s) {
+  if (s == null) return '';
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function onActionGlobalChange(e) {
+  const id = e.target.dataset.actionId;
+  const global = e.target.checked;
+  if (actionShortcuts[id]) {
+    actionShortcuts[id].global = global;
+    saveActionShortcuts();
+  }
+}
+
+function collectActionShortcutsFromDOM() {
+  document.querySelectorAll('.shortcut-row').forEach(row => {
+    const id = row.dataset.actionId;
+    const input = row.querySelector('.shortcut-input-action');
+    const cb = row.querySelector('.shortcut-global-cb');
+    if (id && actionShortcuts[id]) {
+      if (input) actionShortcuts[id].shortcut = input.value.trim();
+      if (cb) actionShortcuts[id].global = cb.checked;
+    }
+  });
+}
+
+async function saveActionShortcuts() {
+  collectActionShortcutsFromDOM();
+  try {
+    await invoke('set_action_shortcuts', { shortcuts: actionShortcuts });
+    buildShortcutToActionMap();
+    showToast('Shortcuts saved', 'success');
+  } catch (e) {
+    showToast(e, 'error');
+  }
+}
+
+function setupActionShortcutRecorders() {
+  document.querySelectorAll('.shortcut-input-action').forEach(input => {
+    const actionId = input.dataset.actionId;
+    input.addEventListener('focus', () => {
+      isRecordingActionShortcut = actionId;
+      recordedActionKeys.clear();
+      input.classList.add('recording');
+      input.value = '';
+    });
+    input.addEventListener('blur', async () => {
+      isRecordingActionShortcut = null;
+      input.classList.remove('recording');
+      const newShortcut = input.value.trim();
+      if (actionShortcuts[actionId]) {
+        actionShortcuts[actionId].shortcut = newShortcut;
+        buildShortcutToActionMap();
+        await saveActionShortcuts();
+      }
+      if (!newShortcut && ACTIONS.find(a => a.id === actionId)) {
+        input.value = ACTIONS.find(a => a.id === actionId).defaultShortcut;
+        if (actionShortcuts[actionId]) {
+          actionShortcuts[actionId].shortcut = input.value;
+          await saveActionShortcuts();
+        }
+      }
+      recordedActionKeys.clear();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (isRecordingActionShortcut !== actionId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const key = mapKeyToTauri(e);
+      if (key) {
+        // Record only the current combination (modifiers + this key), not accumulated keys
+        const keys = eventToKeySet(e);
+        input.value = buildShortcutFromKeys(keys);
+      }
+    });
+    input.addEventListener('keyup', (e) => {
+      if (isRecordingActionShortcut === actionId) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+  });
+}
+
+async function runAction(actionId) {
+  switch (actionId) {
+    case 'up': return sendButton('UP');
+    case 'down': return sendButton('DOWN');
+    case 'left': return sendButton('LEFT');
+    case 'right': return sendButton('RIGHT');
+    case 'enter': return sendButton('ENTER');
+    case 'back': return sendButton('BACK');
+    case 'volume_up': return volumeUp();
+    case 'volume_down': return volumeDown();
+    case 'mute': return setMute(true);
+    case 'unmute': return setMute(false);
+    case 'power_on': return powerOn();
+    case 'power_off': return powerOff();
+    case 'home': return sendButton('HOME');
+    default: return Promise.resolve();
+  }
 }
 
 // ============ Keyboard Shortcuts ============
 
 document.addEventListener('keydown', (e) => {
-  // Don't capture when typing in inputs or recording shortcuts
-  if (e.target.tagName === 'INPUT' || isRecordingShortcut) return;
-  
-  const hasShift = e.shiftKey;
-  
-  switch (e.key) {
-    case 'ArrowUp':
-      sendButton('UP');
-      e.preventDefault();
-      break;
-    case 'ArrowDown':
-      sendButton('DOWN');
-      e.preventDefault();
-      break;
-    case 'ArrowLeft':
-      sendButton('LEFT');
-      e.preventDefault();
-      break;
-    case 'ArrowRight':
-      sendButton('RIGHT');
-      e.preventDefault();
-      break;
-    case 'Enter':
-      sendButton('ENTER');
-      e.preventDefault();
-      break;
-    case 'Backspace':
-    case 'Escape':
-      sendButton('BACK');
-      e.preventDefault();
-      break;
-    case '=':
-    case '+':
-      if (hasShift) {
-        setMute(false);
-      } else {
-        volumeUp();
-      }
-      e.preventDefault();
-      break;
-    case '-':
-    case '_':
-      if (hasShift) {
-        setMute(true);
-      } else {
-        volumeDown();
-      }
-      e.preventDefault();
-      break;
+  if (e.target.tagName === 'INPUT' || isRecordingShortcut || isRecordingActionShortcut) return;
+
+  const shortcutStr = eventToShortcutString(e);
+  const actionId = shortcutToAction[shortcutStr];
+  if (actionId) {
+    runAction(actionId);
+    e.preventDefault();
   }
 });
 
@@ -602,11 +872,33 @@ async function checkStatus() {
 document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   setupShortcutRecorder();
+  listenRunCommand();
 });
+
+function listenRunCommand() {
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('run-command', (e) => {
+      const actionId = e.payload;
+      if (actionId && typeof runAction === 'function') {
+        runAction(actionId);
+      }
+    });
+  }
+}
 
 // Check status when window becomes visible (user clicked tray icon)
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     checkStatus();
+  }
+  // Pause dev window size polling when hidden to avoid unnecessary invokes
+  const el = document.getElementById('window-size-dev');
+  if (el && el.textContent) {
+    if (document.visibilityState === 'hidden' && devWindowSizeInterval) {
+      clearInterval(devWindowSizeInterval);
+      devWindowSizeInterval = null;
+    } else if (document.visibilityState === 'visible' && !devWindowSizeInterval) {
+      startDevWindowSize();
+    }
   }
 });
