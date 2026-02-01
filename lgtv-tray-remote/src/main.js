@@ -313,6 +313,10 @@ async function loadConfig() {
     
     // Load shortcut settings
     await loadShortcutSettings();
+
+    // Load autostart and version
+    await loadAutostartSettings();
+    await loadVersion();
     
     // Check if we should auto-connect
     if (config.active_tv && config.tvs[config.active_tv]?.client_key) {
@@ -336,6 +340,35 @@ async function loadShortcutSettings() {
     document.getElementById('shortcut-enabled').checked = enabled;
   } catch (e) {
     console.error('Failed to load shortcut settings:', e);
+  }
+}
+
+async function loadVersion() {
+  try {
+    const version = await invoke('get_app_version');
+    document.getElementById('app-version').textContent = `Version ${version}`;
+  } catch (e) {
+    console.error('Failed to load version:', e);
+  }
+}
+
+async function loadAutostartSettings() {
+  try {
+    const enabled = await invoke('get_autostart_enabled');
+    document.getElementById('autostart-enabled').checked = enabled;
+  } catch (e) {
+    console.error('Failed to load autostart setting:', e);
+  }
+}
+
+async function toggleAutostart() {
+  const enabled = document.getElementById('autostart-enabled').checked;
+  try {
+    await invoke('set_autostart_enabled', { enabled });
+    showToast(enabled ? 'App will start with your computer' : 'Autostart disabled', 'success');
+  } catch (e) {
+    showToast(e, 'error');
+    document.getElementById('autostart-enabled').checked = !enabled;
   }
 }
 

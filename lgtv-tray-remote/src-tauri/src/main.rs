@@ -17,6 +17,9 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tokio::sync::Mutex;
 use tv::{CommandResult, TvConnection};
 
+#[cfg(feature = "autostart")]
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+
 // Track window visibility ourselves since is_visible() can be unreliable
 static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
 
@@ -284,6 +287,39 @@ async fn set_mac(
 }
 
 #[tauri::command]
+fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[cfg(feature = "autostart")]
+#[tauri::command]
+fn get_autostart_enabled(app: tauri::AppHandle) -> Result<bool, String> {
+    app.autolaunch().is_enabled().map_err(|e| e.to_string())
+}
+
+#[cfg(feature = "autostart")]
+#[tauri::command]
+fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    if enabled {
+        app.autolaunch().enable().map_err(|e| e.to_string())
+    } else {
+        app.autolaunch().disable().map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(not(feature = "autostart"))]
+#[tauri::command]
+fn get_autostart_enabled(_app: tauri::AppHandle) -> Result<bool, String> {
+    Ok(false)
+}
+
+#[cfg(not(feature = "autostart"))]
+#[tauri::command]
+fn set_autostart_enabled(_app: tauri::AppHandle, _enabled: bool) -> Result<(), String> {
+    Err("Autostart is not available in this build".to_string())
+}
+
+#[tauri::command]
 async fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
 }
@@ -411,9 +447,17 @@ fn main() {
         config: Mutex::new(Config::load()),
     });
 
-    let mut app = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+
+    #[cfg(feature = "autostart")]
+    let builder = builder.plugin(tauri_plugin_autostart::init(
+        MacosLauncher::LaunchAgent,
+        None::<Vec<&str>>,
+    ));
+
+    let app = builder
         .manage(state.clone())
         .setup(|app| {
             // Hide window on startup - we're a tray app
@@ -517,6 +561,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_app_version,
             get_config,
             save_tv,
             set_active_tv,
@@ -535,6 +580,8 @@ fn main() {
             quit_app,
             get_shortcut_settings,
             set_shortcut,
+            get_autostart_enabled,
+            set_autostart_enabled,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

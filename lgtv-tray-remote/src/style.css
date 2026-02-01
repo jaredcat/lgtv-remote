@@ -18,12 +18,38 @@
   --transition: 0.15s ease;
 }
 
+/* Single scrollbar: window scroll only; style to match app (WebView2/Chromium on Windows) */
+html {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-tertiary) var(--bg-primary);
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, 'Noto Sans', 'DejaVu Sans', sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   user-select: none;
   -webkit-user-select: none;
+}
+
+html::-webkit-scrollbar {
+  width: 10px;
+}
+
+html::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+html::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 5px;
+  border: 2px solid var(--bg-primary);
+}
+
+html::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
 }
 
 .container {
@@ -152,8 +178,6 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 500px;
-  overflow-y: auto;
   transition: max-height 0.3s ease, padding 0.3s ease;
 }
 
@@ -275,6 +299,13 @@ header h1 {
 .mac-field .hint.warning {
   color: #fbbf24;
   opacity: 1;
+}
+
+.app-version {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+  margin-top: 4px;
 }
 
 /* Buttons */

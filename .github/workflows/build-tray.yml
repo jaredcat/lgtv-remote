@@ -49,14 +49,16 @@ jobs:
         with:
           workspaces: './lgtv-tray-remote/src-tauri -> target'
 
-      - name: Update version in Tauri config
+      - name: Update version (single source: tag → Cargo.toml, tauri.conf.json, flake.nix)
         shell: bash
         run: |
           VERSION="${{ inputs.version }}"
           VERSION="${VERSION#v}"
           cd lgtv-tray-remote
-          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          sed -i.bak "s/version = \"[^\"]*\";/version = \"$VERSION\";/" flake.nix
+          rm -f src-tauri/Cargo.toml.bak src-tauri/tauri.conf.json.bak flake.nix.bak
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli

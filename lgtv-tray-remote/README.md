@@ -13,6 +13,7 @@ A system tray application for controlling LG webOS TVs. Works on **Windows**, **
 - Home and Back buttons
 - Keyboard shortcuts
 - Auto-reconnect on startup
+- **Start with computer** (autostart at login) — option in Settings
 - Persistent TV configuration
 
 ## Installation
@@ -178,9 +179,9 @@ Build outputs are in `src-tauri/target/release/bundle/`.
 | Arrow keys | Navigate |
 | Enter | Select/OK |
 | Backspace/Escape | Back |
-| `+` / `=` | Volume Up |
+| `+` | Volume Up |
 | `-` | Volume Down |
-| Shift + `+` | Unmute |
+| Shift + `=` | Unmute |
 | Shift + `-` | Mute |
 
 ### Power On (Wake-on-LAN)
@@ -199,14 +200,9 @@ Settings are stored in:
 
 ## Troubleshooting
 
-### "Connection timeout"
-- Verify the TV IP address is correct
-- Ensure your computer and TV are on the same network
-- Check if the TV is powered on
-
-### "Registration timeout - check TV for pairing prompt"
-- Look at your TV screen for the pairing dialog
-- Accept the connection request within 60 seconds
+### Power On not working
+- The saved MAC address might be incorrect
+- Try manually setting the MAC address from the settings in the TV
 
 ### "MAC address not saved" (Power On fails)
 - Power on the TV manually
@@ -217,26 +213,17 @@ Settings are stored in:
 - Some TVs close WebSocket connections after inactivity
 - The app will auto-reconnect when you send a command
 
+
+### "Connection timeout"
+- Verify the TV IP address is correct
+- Ensure your computer and TV are on the same network
+- Check if the TV is powered on
+
+### "Registration timeout - check TV for pairing prompt"
+- Look at your TV screen for the pairing dialog
+- Accept the connection request within 60 seconds
+
 ## Development
-
-### Project Structure
-
-```
-lgtv-tray-remote/
-├── src/                    # Frontend (HTML/CSS/JS)
-│   ├── index.html
-│   ├── style.css
-│   └── main.js
-├── src-tauri/              # Rust backend
-│   ├── src/
-│   │   ├── main.rs         # App entry, tray, commands
-│   │   ├── tv.rs           # LG TV WebSocket client
-│   │   └── config.rs       # Configuration management
-│   ├── icons/
-│   └── Cargo.toml
-├── package.json
-└── generate-icons.sh
-```
 
 ### Cross-Compilation
 
