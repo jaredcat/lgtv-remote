@@ -4,7 +4,7 @@
 mod config;
 mod tv;
 
-use config::{ActionShortcutConfig, Config, TvConfig, WindowSize};
+use config::{ActionShortcutConfig, Config, StreamingDeviceConfig, TvConfig, WindowSize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -258,15 +258,26 @@ async fn power_off(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResu
 
 #[tauri::command]
 async fn power_on(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
-    let config = state.config.lock().await;
-    let (_, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
+    let (mac, wake_streaming, streaming_device) = {
+        let config = state.config.lock().await;
+        let (_, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
+        let mac = tv_config
+            .mac
+            .as_ref()
+            .ok_or("MAC address not saved. Connect to the TV while it's on and click 'Fetch MAC', or set it manually in settings.")?
+            .clone();
+        let wake_streaming = config.wake_streaming_on_power_on;
+        let streaming_device = config.streaming_device.clone();
+        (mac, wake_streaming, streaming_device)
+    };
 
-    let mac = tv_config
-        .mac
-        .as_ref()
-        .ok_or("MAC address not saved. Connect to the TV while it's on and click 'Fetch MAC', or set it manually in settings.")?;
-
-    tv::wake_on_lan(mac)
+    let result = tv::wake_on_lan(&mac, None)?;
+    if wake_streaming {
+        if let Some(device) = streaming_device {
+            let _ = wake_streaming_device_impl(&device).await;
+        }
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -325,6 +336,50 @@ async fn set_mac(
     config.save()?;
 
     Ok(CommandResult::ok_with_message(&format!("MAC address set to: {}", mac_formatted)))
+}
+
+async fn wake_streaming_device_impl(device: &StreamingDeviceConfig) -> Result<CommandResult, String> {
+    match device {
+        StreamingDeviceConfig::Wol { mac, broadcast_ip } => {
+            tv::wake_on_lan(mac, broadcast_ip.as_deref())
+        }
+        StreamingDeviceConfig::Adb { ip, port } => {
+            tv::wake_adb(ip, port.unwrap_or(5555)).await
+        }
+        StreamingDeviceConfig::Roku { ip } => tv::wake_roku(ip).await,
+    }
+}
+
+#[tauri::command]
+async fn wake_streaming_device(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
+    let config = state.config.lock().await;
+    let device = config
+        .streaming_device
+        .as_ref()
+        .ok_or("No streaming device configured. Add one in Settings (e.g. Android TV / Shield MAC for Wake-on-LAN, or Roku IP).")?
+        .clone();
+    drop(config);
+    wake_streaming_device_impl(&device).await
+}
+
+#[tauri::command]
+async fn set_streaming_device(
+    state: tauri::State<'_, Arc<AppState>>,
+    device: Option<StreamingDeviceConfig>,
+) -> Result<(), String> {
+    let mut config = state.config.lock().await;
+    config.set_streaming_device(device);
+    config.save()
+}
+
+#[tauri::command]
+async fn set_wake_streaming_on_power_on(
+    state: tauri::State<'_, Arc<AppState>>,
+    enabled: bool,
+) -> Result<(), String> {
+    let mut config = state.config.lock().await;
+    config.wake_streaming_on_power_on = enabled;
+    config.save()
 }
 
 #[tauri::command]
@@ -502,7 +557,17 @@ async fn run_action_impl(state: Arc<AppState>, action_id: &str) -> Result<(), St
                 .ok_or("MAC address not saved")?
                 .clone();
             drop(config);
-            tv::wake_on_lan(&mac).map(|_| ())
+            tv::wake_on_lan(&mac, None).map(|_| ())
+        }
+        "wake_streaming_device" => {
+            drop(tv);
+            let config = state.config.lock().await;
+            let device = config
+                .streaming_device
+                .clone()
+                .ok_or("No streaming device configured")?;
+            drop(config);
+            wake_streaming_device_impl(&device).await.map(|_| ())
         }
         _ => Ok(()),
     }
@@ -827,6 +892,9 @@ fn main() {
             power_on,
             fetch_mac,
             set_mac,
+            wake_streaming_device,
+            set_streaming_device,
+            set_wake_streaming_on_power_on,
             quit_app,
             get_shortcut_settings,
             set_shortcut,

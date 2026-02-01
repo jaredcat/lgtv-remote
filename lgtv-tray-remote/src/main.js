@@ -33,6 +33,7 @@ const ACTIONS = [
   { id: 'unmute', label: 'Unmute', defaultShortcut: 'Shift+=' },
   { id: 'power_on', label: 'Power On', defaultShortcut: 'F7' },
   { id: 'power_off', label: 'Power Off', defaultShortcut: 'F8' },
+  { id: 'wake_streaming_device', label: 'Wake streaming device', defaultShortcut: '' },
   { id: 'home', label: 'Home', defaultShortcut: 'Home' },
 ];
 
@@ -248,6 +249,91 @@ async function fetchMac() {
   }
 }
 
+function toggleStreamingDeviceFields() {
+  const type = document.getElementById('streaming-device-type').value;
+  document.getElementById('streaming-device-wol-row').style.display = type === 'wol' ? '' : 'none';
+  document.getElementById('streaming-device-adb-row').style.display = type === 'adb' ? '' : 'none';
+  document.getElementById('streaming-device-roku-row').style.display = type === 'roku' ? '' : 'none';
+  const wakeOnPowerRow = document.getElementById('streaming-device-wake-on-power-row');
+  if (wakeOnPowerRow) wakeOnPowerRow.style.display = type ? '' : 'none';
+  const saveRow = document.getElementById('streaming-device-save-row');
+  if (saveRow) saveRow.style.display = type ? '' : 'none';
+}
+
+async function onStreamingDeviceTypeChange() {
+  const type = document.getElementById('streaming-device-type').value;
+  toggleStreamingDeviceFields();
+  if (type === '') {
+    await clearStreamingDevice();
+  }
+}
+
+async function clearStreamingDevice() {
+  try {
+    await invoke('set_streaming_device', { device: null });
+    await invoke('set_wake_streaming_on_power_on', { enabled: false });
+    config = await invoke('get_config');
+    const wakeStreamingBtn = document.getElementById('wake-streaming-btn');
+    if (wakeStreamingBtn) wakeStreamingBtn.style.display = 'none';
+  } catch (e) {
+    console.error('Failed to clear streaming device:', e);
+  }
+}
+
+async function saveStreamingDevice() {
+  const type = document.getElementById('streaming-device-type').value;
+  let device = null;
+  if (type === 'wol') {
+    const mac = document.getElementById('streaming-device-mac').value.trim();
+    if (!mac) {
+      showToast('Enter the device MAC address (e.g. from router or Shield settings)', 'error');
+      return;
+    }
+    const broadcast_ip = document.getElementById('streaming-device-wol-broadcast').value.trim() || null;
+    device = { type: 'wol', mac, broadcast_ip };
+  } else if (type === 'adb') {
+    const ip = document.getElementById('streaming-device-adb-ip').value.trim();
+    if (!ip) {
+      showToast('Enter the device IP address (Shield: enable Network debugging in Developer options)', 'error');
+      return;
+    }
+    const portStr = document.getElementById('streaming-device-adb-port').value.trim();
+    const port = portStr ? parseInt(portStr, 10) : 5555;
+    if (isNaN(port) || port < 1 || port > 65535) {
+      showToast('ADB port must be 1–65535 (default 5555)', 'error');
+      return;
+    }
+    device = { type: 'adb', ip, port: port === 5555 ? null : port };
+  } else if (type === 'roku') {
+    const ip = document.getElementById('streaming-device-ip').value.trim();
+    if (!ip) {
+      showToast('Enter the Roku IP address', 'error');
+      return;
+    }
+    device = { type: 'roku', ip };
+  }
+  try {
+    await invoke('set_streaming_device', { device });
+    await invoke('set_wake_streaming_on_power_on', {
+      enabled: document.getElementById('wake-streaming-on-power-on').checked,
+    });
+    config = await invoke('get_config');
+    document.getElementById('wake-streaming-btn').style.display = config.streaming_device ? '' : 'none';
+    showToast('Streaming device saved', 'success');
+  } catch (e) {
+    showToast(e, 'error');
+  }
+}
+
+async function wakeStreamingDevice() {
+  try {
+    const result = await invoke('wake_streaming_device');
+    showToast(result.message || 'Wake sent', 'success');
+  } catch (e) {
+    showToast(e, 'error');
+  }
+}
+
 async function saveMac() {
   const mac = document.getElementById('mac-input').value.trim();
   if (!mac) {
@@ -342,6 +428,32 @@ async function loadConfig() {
         macStatus.className = 'hint warning';
       }
     }
+
+    // Streaming device
+    const sd = config.streaming_device;
+    const typeSelect = document.getElementById('streaming-device-type');
+    if (sd) {
+      if (sd.type === 'wol') {
+        typeSelect.value = 'wol';
+        document.getElementById('streaming-device-mac').value = sd.mac || '';
+        document.getElementById('streaming-device-wol-broadcast').value = sd.broadcast_ip || '';
+      } else if (sd.type === 'adb') {
+        typeSelect.value = 'adb';
+        document.getElementById('streaming-device-adb-ip').value = sd.ip || '';
+        document.getElementById('streaming-device-adb-port').value = sd.port ? String(sd.port) : '5555';
+      } else if (sd.type === 'roku') {
+        typeSelect.value = 'roku';
+        document.getElementById('streaming-device-ip').value = sd.ip || '';
+      } else {
+        typeSelect.value = '';
+      }
+    } else {
+      typeSelect.value = '';
+    }
+    document.getElementById('wake-streaming-on-power-on').checked = config.wake_streaming_on_power_on === true;
+    toggleStreamingDeviceFields();
+    const wakeStreamingBtn = document.getElementById('wake-streaming-btn');
+    if (wakeStreamingBtn) wakeStreamingBtn.style.display = config.streaming_device ? '' : 'none';
     
     // Load shortcut settings
     await loadShortcutSettings();
@@ -817,6 +929,7 @@ async function runAction(actionId) {
     case 'unmute': return setMute(false);
     case 'power_on': return powerOn();
     case 'power_off': return powerOff();
+    case 'wake_streaming_device': return wakeStreamingDevice();
     case 'home': return sendButton('HOME');
     default: return Promise.resolve();
   }

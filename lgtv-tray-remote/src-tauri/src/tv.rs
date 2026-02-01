@@ -191,7 +191,7 @@ impl TvConnection {
         let handshake = Self::handshake_payload(client_key);
         {
             let mut ws = ws.lock().await;
-            ws.send(Message::Text(handshake.to_string()))
+            ws.send(Message::Text(handshake.to_string().into()))
                 .await
                 .map_err(|e| format!("Failed to send handshake: {}", e))?;
         }
@@ -281,7 +281,7 @@ impl TvConnection {
         });
 
         let mut ws = ws.lock().await;
-        if let Err(e) = ws.send(Message::Text(msg.to_string())).await {
+        if let Err(e) = ws.send(Message::Text(msg.to_string().into())).await {
             self.connected = false;
             return Err(format!("Send failed (disconnected): {}", e));
         }
@@ -330,7 +330,7 @@ impl TvConnection {
         let cmd = format!("type:button\nname:{}\n\n", button.to_uppercase());
 
         let mut ws = input_ws.lock().await;
-        if let Err(e) = ws.send(Message::Text(cmd)).await {
+        if let Err(e) = ws.send(Message::Text(cmd.into())).await {
             // Input socket died, clear it so we reconnect next time
             drop(ws);
             self.input_ws = None;
@@ -473,7 +473,9 @@ impl TvConnection {
     }
 }
 
-pub fn wake_on_lan(mac: &str) -> Result<CommandResult, String> {
+/// Send Wake-on-LAN magic packet. If broadcast_ip is set (e.g. 10.0.0.255), also send to that
+/// subnet broadcast on ports 9 and 7 — required on some networks where 255.255.255.255 is blocked.
+pub fn wake_on_lan(mac: &str, broadcast_ip: Option<&str>) -> Result<CommandResult, String> {
     let mac_clean = mac.replace([':', '-'], "");
     let mac_bytes: [u8; 6] = hex::decode(&mac_clean)
         .map_err(|_| "Invalid MAC address")?
@@ -485,7 +487,72 @@ pub fn wake_on_lan(mac: &str) -> Result<CommandResult, String> {
         .send()
         .map_err(|e| format!("WoL send failed: {}", e))?;
 
+    if let Some(ip) = broadcast_ip {
+        let ip = ip.trim();
+        if !ip.is_empty() {
+            let from: &str = "0.0.0.0:0";
+            for port in [9u16, 7] {
+                let to_addr = format!("{}:{}", ip, port);
+                if let Err(e) = magic_packet.send_to(to_addr.as_str(), from) {
+                    log::warn!("WoL send_to {} failed: {}", to_addr, e);
+                }
+            }
+        }
+    }
+
     Ok(CommandResult::ok_with_message("Wake-on-LAN packet sent"))
+}
+
+/// Wake a Roku device via ECP (External Control Protocol). Sends keypress/PowerOn to port 8060.
+pub async fn wake_roku(ip: &str) -> Result<CommandResult, String> {
+    use tokio::io::{AsyncWriteExt, BufWriter};
+
+    let mut stream = TcpStream::connect(format!("{}:8060", ip))
+        .await
+        .map_err(|e| format!("Could not reach Roku at {}:8060: {}", ip, e))?;
+
+    // Roku ECP: POST /keypress/PowerOn with Host header set to IP (required by Roku).
+    let req = format!(
+        "POST /keypress/PowerOn HTTP/1.1\r\nHost: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+        ip
+    );
+    let mut writer = BufWriter::new(&mut stream);
+    writer
+        .write_all(req.as_bytes())
+        .await
+        .map_err(|e| format!("Failed to send Roku wake: {}", e))?;
+    writer.flush().await.map_err(|e| e.to_string())?;
+
+    Ok(CommandResult::ok_with_message("Roku wake sent"))
+}
+
+/// Wake an Android TV / NVIDIA Shield via ADB. Requires Network debugging enabled on the device.
+/// Uses system `adb` from PATH.
+pub async fn wake_adb(ip: &str, port: u16) -> Result<CommandResult, String> {
+    use tokio::process::Command;
+
+    let target = format!("{}:{}", ip, port);
+    let output = Command::new("adb")
+        .args(["connect", &target])
+        .output()
+        .await
+        .map_err(|e| format!("adb not found or failed: {}. Install Android platform tools (e.g. brew install android-platform-tools).", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("adb connect failed: {}", stderr.trim()));
+    }
+
+    let output = Command::new("adb")
+        .args(["-s", &target, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+        .output()
+        .await
+        .map_err(|e| format!("adb shell failed: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("adb wake failed: {}", stderr.trim()));
+    }
+
+    Ok(CommandResult::ok_with_message("ADB wake sent"))
 }
 
 // Need to add hex as a dependency or implement manually

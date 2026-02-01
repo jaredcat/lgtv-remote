@@ -10,6 +10,7 @@ A system tray application for controlling LG webOS TVs. Works on **Windows**, **
 - D-pad navigation (Up, Down, Left, Right, OK)
 - Volume control (Up, Down, Mute, Unmute)
 - Power On (Wake-on-LAN) and Power Off
+- **Wake streaming device** (Android TV / NVIDIA Shield via Wake-on-LAN, or Roku via ECP)
 - Home and Back buttons
 - Keyboard shortcuts
 - Auto-reconnect on startup
@@ -21,12 +22,14 @@ A system tray application for controlling LG webOS TVs. Works on **Windows**, **
 ### NixOS / Nix
 
 **Enable binary cache** (recommended - avoids building from source):
+
 ```bash
 # One-time setup
 nix run nixpkgs#cachix -- use lgtv-tray-remote
 ```
 
 Or add to your NixOS configuration:
+
 ```nix
 nix.settings = {
   substituters = [ "https://lgtv-tray-remote.cachix.org" ];
@@ -35,16 +38,19 @@ nix.settings = {
 ```
 
 **Run directly** (no install):
+
 ```bash
 nix run github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
 ```
 
 **Install to profile**:
+
 ```bash
 nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
 ```
 
 **Add to NixOS configuration** (flake-based):
+
 ```nix
 # flake.nix
 {
@@ -60,6 +66,7 @@ nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
 ```
 
 **Build locally**:
+
 ```bash
 cd lgtv-tray-remote
 nix build
@@ -105,30 +112,35 @@ cargo tauri build
 
 ##### Prerequisites
 
-1. **Rust** (1.70+): https://rustup.rs/
+1. **Rust** (1.70+): <https://rustup.rs/>
 2. **Tauri CLI**:
+
    ```bash
    cargo install tauri-cli
    ```
 
-4. **Platform-specific dependencies**:
+3. **Platform-specific dependencies**:
 
    **Linux (Debian/Ubuntu)**:
+
    ```bash
    sudo apt install libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
    ```
 
    **Linux (Fedora)**:
+
    ```bash
    sudo dnf install webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel
    ```
 
    **Linux (Arch)**:
+
    ```bash
    sudo pacman -S webkit2gtk-4.1 libappindicator-gtk3 librsvg
    ```
 
    **macOS**: Xcode Command Line Tools
+
    ```bash
    xcode-select --install
    ```
@@ -175,7 +187,7 @@ Build outputs are in `src-tauri/target/release/bundle/`.
 ### Keyboard Shortcuts
 
 | Key | Action |
-|-----|--------|
+| ----- | -------- |
 | Arrow keys | Navigate |
 | Enter | Select/OK |
 | Backspace/Escape | Back |
@@ -187,13 +199,25 @@ Build outputs are in `src-tauri/target/release/bundle/`.
 ### Power On (Wake-on-LAN)
 
 For **Power On** to work:
+
 1. Enable "Wake on LAN" in your TV's network settings
 2. The TV must have been authenticated at least once while powered on (to save its MAC address)
 3. Your computer must be on the same network as the TV
 
+### Streaming device (Android TV, Roku)
+
+If you use a set-top box (e.g. **NVIDIA Shield**, other Android TV, or **Roku**) on an HDMI input, you can wake it from standby so the remote works when the box was off.
+
+- **Wake-on-LAN (Android TV / Shield)**: In Settings → Streaming device, choose "Wake-on-LAN", enter the device’s **MAC address** (from your router, or Shield: Settings → Device preferences → About → Network). Optionally set **Subnet broadcast IP** (e.g. `10.0.0.255` for a 10.0.0.x network) — some networks only deliver WoL to the subnet broadcast; try this if the default (255.255.255.255) doesn’t wake the device. Works best when the device is on Ethernet.
+- **ADB (Android TV / Shield)**: Choose "ADB" and enter the device’s **IP address** (and port, default 5555). Requires **Network debugging** enabled on the device (Shield: Settings → Developer options → Network debugging). The app uses the system `adb` (install Android platform tools if needed, e.g. `brew install android-platform-tools`). ADB wake works when the device is in standby but still listening on the network.
+- **Roku**: Choose "Roku" and enter the Roku’s **IP address**. The app sends a power-on command over the local network (Roku ECP). Ensure "Control by mobile apps" is enabled on the Roku (Settings → System → Advanced system settings).
+
+You can enable **"Also wake streaming device when using Power On"** so one Power On action wakes both the TV and the streaming device. You can also assign a keyboard shortcut to "Wake streaming device" in the shortcuts panel.
+
 ### Configuration
 
 Settings are stored in:
+
 - **Linux**: `~/.config/lgtv-remote/config.json`
 - **macOS**: `~/Library/Application Support/lgtv-remote/config.json`
 - **Windows**: `%APPDATA%\lgtv-remote\config.json`
@@ -201,25 +225,29 @@ Settings are stored in:
 ## Troubleshooting
 
 ### Power On not working
+
 - The saved MAC address might be incorrect
 - Try manually setting the MAC address from the settings in the TV
 
 ### "MAC address not saved" (Power On fails)
+
 - Power on the TV manually
 - Re-authenticate using the Settings panel
 - The app will save the MAC address for future Wake-on-LAN
 
 ### Connection drops frequently
+
 - Some TVs close WebSocket connections after inactivity
 - The app will auto-reconnect when you send a command
 
-
 ### "Connection timeout"
+
 - Verify the TV IP address is correct
 - Ensure your computer and TV are on the same network
 - Check if the TV is powered on
 
 ### "Registration timeout - check TV for pairing prompt"
+
 - Look at your TV screen for the pairing dialog
 - Accept the connection request within 60 seconds
 

@@ -1,153 +1,325 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LG TV Remote</title>
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <div class="container">
-    <!-- Header -->
-    <header>
-      <h1>LG TV Remote</h1>
-      <div class="header-right">
-        <div class="status">
-          <span id="status-dot" class="dot disconnected"></span>
-          <span id="status-text">Not Connected</span>
-          <button type="button" id="status-connect-btn" class="btn btn-status-connect" onclick="connectTv()" style="display: none;">Connect</button>
-        </div>
-        <button class="btn-icon quit-btn" onclick="quitApp()" title="Quit">&times;</button>
-      </div>
-    </header>
-
-    <!-- Settings Panel (collapsible) -->
-    <section id="settings-panel" class="settings collapsed">
-      <button class="settings-toggle" onclick="toggleSettings()">
-        <span class="icon">&#x2699;</span> Settings
-        <span class="arrow">&#x25BC;</span>
-      </button>
-      <div class="settings-content">
-        <div class="field">
-          <label for="tv-name">TV Name</label>
-          <input type="text" id="tv-name" placeholder="e.g., LivingRoomTV">
-        </div>
-        <div class="field">
-          <label for="tv-ip">TV IP Address</label>
-          <input type="text" id="tv-ip" placeholder="192.168.1.100">
-        </div>
-        <div class="field checkbox">
-          <label>
-            <input type="checkbox" id="use-ssl" checked>
-            Use SSL (recommended)
-          </label>
-        </div>
-        <div class="button-row">
-          <button class="btn secondary" onclick="authenticate()">Authenticate</button>
-          <button class="btn primary" onclick="connectTv()">Connect</button>
-        </div>
-        
-        <div class="settings-divider"></div>
-        <label class="section-label">Wake-on-LAN (MAC Address)</label>
-        
-        <div class="field mac-field">
-          <input type="text" id="mac-input" placeholder="AA:BB:CC:DD:EE:FF" pattern="[0-9A-Fa-f:.\-\s]+">
-          <small class="hint" id="mac-status"></small>
-        </div>
-        <div class="button-row">
-          <button class="btn secondary" onclick="fetchMac()" title="Get MAC from TV (must be connected)">Fetch MAC</button>
-          <button class="btn secondary" onclick="saveMac()">Save MAC</button>
-        </div>
-
-        <div class="settings-divider"></div>
-        <label class="section-label">Global Shortcut</label>
-        
-        <div class="field checkbox">
-          <label>
-            <input type="checkbox" id="shortcut-enabled" onchange="toggleShortcut()">
-            Enable global shortcut
-          </label>
-        </div>
-        <div class="field shortcut-field">
-          <div class="shortcut-input-row">
-            <input type="text" id="shortcut-input" placeholder="Click and press keys..." readonly>
-            <button type="button" class="btn-clear-shortcut" onclick="clearGlobalShortcut()" title="Clear shortcut" aria-label="Clear shortcut">&times;</button>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LG TV Remote</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <header>
+        <h1>LG TV Remote</h1>
+        <div class="header-right">
+          <div class="status">
+            <span id="status-dot" class="dot disconnected"></span>
+            <span id="status-text">Not Connected</span>
+            <button
+              type="button"
+              id="status-connect-btn"
+              class="btn btn-status-connect"
+              onclick="connectTv()"
+              style="display: none">
+              Connect
+            </button>
           </div>
-          <small class="hint" id="shortcut-hint">Click to record shortcut</small>
+          <button class="btn-icon quit-btn" onclick="quitApp()" title="Quit">
+            &times;
+          </button>
         </div>
+      </header>
 
-        <div class="settings-divider"></div>
-        <div class="field checkbox">
-          <label>
-            <input type="checkbox" id="autostart-enabled" onchange="toggleAutostart()">
-            Start with computer
-          </label>
+      <!-- Settings Panel (collapsible) -->
+      <section id="settings-panel" class="settings collapsed">
+        <button class="settings-toggle" onclick="toggleSettings()">
+          <span class="icon">&#x2699;</span> Settings
+          <span class="arrow">&#x25BC;</span>
+        </button>
+        <div class="settings-content">
+          <div class="field">
+            <label for="tv-name">TV Name</label>
+            <input type="text" id="tv-name" placeholder="e.g., LivingRoomTV" />
+          </div>
+          <div class="field">
+            <label for="tv-ip">TV IP Address</label>
+            <input type="text" id="tv-ip" placeholder="192.168.1.100" />
+          </div>
+          <div class="field checkbox">
+            <label>
+              <input type="checkbox" id="use-ssl" checked />
+              Use SSL (recommended)
+            </label>
+          </div>
+          <div class="button-row">
+            <button class="btn secondary" onclick="authenticate()">
+              Authenticate
+            </button>
+            <button class="btn primary" onclick="connectTv()">Connect</button>
+          </div>
+
+          <div class="settings-divider"></div>
+          <label class="section-label">Global Shortcut</label>
+
+          <div class="field checkbox">
+            <label>
+              <input
+                type="checkbox"
+                id="shortcut-enabled"
+                onchange="toggleShortcut()" />
+              Enable global shortcut
+            </label>
+          </div>
+          <div class="field shortcut-field">
+            <div class="shortcut-input-row">
+              <input
+                type="text"
+                id="shortcut-input"
+                placeholder="Click and press keys..."
+                readonly />
+              <button
+                type="button"
+                class="btn-clear-shortcut"
+                onclick="clearGlobalShortcut()"
+                title="Clear shortcut"
+                aria-label="Clear shortcut">
+                &times;
+              </button>
+            </div>
+            <small class="hint" id="shortcut-hint"
+              >Click to record shortcut</small
+            >
+          </div>
+
+          <div class="settings-divider"></div>
+          <div class="field checkbox">
+            <label>
+              <input
+                type="checkbox"
+                id="autostart-enabled"
+                onchange="toggleAutostart()" />
+              Start with computer
+            </label>
+          </div>
+
+          <div class="settings-divider"></div>
+          <label class="section-label">Wake-on-LAN (MAC Address)</label>
+
+          <div class="field mac-field">
+            <input
+              type="text"
+              id="mac-input"
+              placeholder="AA:BB:CC:DD:EE:FF"
+              pattern="[0-9A-Fa-f:.\-\s]+" />
+            <small class="hint" id="mac-status"></small>
+          </div>
+          <div class="button-row">
+            <button
+              class="btn secondary"
+              onclick="fetchMac()"
+              title="Get MAC from TV (must be connected)">
+              Fetch MAC
+            </button>
+            <button class="btn secondary" onclick="saveMac()">Save MAC</button>
+          </div>
+
+          <div class="settings-divider"></div>
+          <label class="section-label"
+            >Streaming device (e.g. Android TV, Roku)</label
+          >
+          <small class="hint"
+            >Wake your set-top box (Shield, Roku, etc.) when it's in standby so
+            you can control it.</small
+          >
+          <div class="field">
+            <label for="streaming-device-type">Type</label>
+            <select
+              id="streaming-device-type"
+              onchange="onStreamingDeviceTypeChange()">
+              <option value="">None</option>
+              <option value="wol">Wake-on-LAN (Android TV / Shield)</option>
+              <option value="adb">ADB (Android TV / Shield)</option>
+              <option value="roku">Roku</option>
+            </select>
+          </div>
+          <div
+            id="streaming-device-wol-row"
+            class="field"
+            style="display: none">
+            <label for="streaming-device-mac">Device MAC address</label>
+            <input
+              type="text"
+              id="streaming-device-mac"
+              placeholder="AA:BB:CC:DD:EE:FF" />
+            <label for="streaming-device-wol-broadcast" class="hint"
+              >Subnet broadcast IP (optional, e.g. 10.0.0.255)</label
+            >
+            <input
+              type="text"
+              id="streaming-device-wol-broadcast"
+              placeholder="10.0.0.255" />
+          </div>
+          <div
+            id="streaming-device-adb-row"
+            class="field"
+            style="display: none">
+            <label for="streaming-device-adb-ip">Device IP address</label>
+            <input
+              type="text"
+              id="streaming-device-adb-ip"
+              placeholder="192.168.1.101" />
+            <label for="streaming-device-adb-port" class="hint"
+              >ADB port (default 5555)</label
+            >
+            <input
+              type="text"
+              id="streaming-device-adb-port"
+              placeholder="5555" />
+          </div>
+          <div
+            id="streaming-device-roku-row"
+            class="field"
+            style="display: none">
+            <label for="streaming-device-ip">Roku IP address</label>
+            <input
+              type="text"
+              id="streaming-device-ip"
+              placeholder="192.168.1.101" />
+          </div>
+          <div id="streaming-device-wake-on-power-row" class="field checkbox">
+            <label>
+              <input type="checkbox" id="wake-streaming-on-power-on" />
+              Also wake streaming device when using &quot;Power On&quot;
+            </label>
+          </div>
+          <div id="streaming-device-save-row" class="button-row">
+            <button class="btn secondary" onclick="saveStreamingDevice()">
+              Save streaming device
+            </button>
+          </div>
+
+          <div class="app-version-row">
+            <span id="app-version" class="app-version"></span>
+            <span
+              id="window-size-dev"
+              class="window-size-dev"
+              aria-hidden="true"></span>
+            <button
+              type="button"
+              class="btn-link btn-reset-window"
+              onclick="resetWindowSize()"
+              title="Reset window to default size">
+              Reset window size
+            </button>
+          </div>
         </div>
+      </section>
 
-        <div class="app-version-row">
-          <span id="app-version" class="app-version"></span>
-          <span id="window-size-dev" class="window-size-dev" aria-hidden="true"></span>
-          <button type="button" class="btn-link btn-reset-window" onclick="resetWindowSize()" title="Reset window to default size">Reset window size</button>
+      <!-- Navigation D-Pad -->
+      <section class="dpad">
+        <div class="dpad-grid">
+          <div></div>
+          <button class="btn dpad-btn" onclick="sendButton('UP')" title="Up">
+            &uarr;
+          </button>
+          <div></div>
+          <button
+            class="btn dpad-btn"
+            onclick="sendButton('LEFT')"
+            title="Left">
+            &larr;
+          </button>
+          <button
+            class="btn dpad-btn ok-btn"
+            onclick="sendButton('ENTER')"
+            title="OK">
+            OK
+          </button>
+          <button
+            class="btn dpad-btn"
+            onclick="sendButton('RIGHT')"
+            title="Right">
+            &rarr;
+          </button>
+          <div></div>
+          <button
+            class="btn dpad-btn"
+            onclick="sendButton('DOWN')"
+            title="Down">
+            &darr;
+          </button>
+          <div></div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- Navigation D-Pad -->
-    <section class="dpad">
-      <div class="dpad-grid">
-        <div></div>
-        <button class="btn dpad-btn" onclick="sendButton('UP')" title="Up">&uarr;</button>
-        <div></div>
-        <button class="btn dpad-btn" onclick="sendButton('LEFT')" title="Left">&larr;</button>
-        <button class="btn dpad-btn ok-btn" onclick="sendButton('ENTER')" title="OK">OK</button>
-        <button class="btn dpad-btn" onclick="sendButton('RIGHT')" title="Right">&rarr;</button>
-        <div></div>
-        <button class="btn dpad-btn" onclick="sendButton('DOWN')" title="Down">&darr;</button>
-        <div></div>
-      </div>
-    </section>
+      <!-- Volume Controls -->
+      <section class="volume">
+        <button class="btn" onclick="volumeDown()" title="Volume Down">
+          <span class="icon">-</span> Vol
+        </button>
+        <button class="btn icon-btn" onclick="setMute(true)" title="Mute">
+          M
+        </button>
+        <button class="btn icon-btn" onclick="setMute(false)" title="Unmute">
+          U
+        </button>
+        <button class="btn" onclick="volumeUp()" title="Volume Up">
+          Vol <span class="icon">+</span>
+        </button>
+      </section>
 
-    <!-- Volume Controls -->
-    <section class="volume">
-      <button class="btn" onclick="volumeDown()" title="Volume Down">
-        <span class="icon">-</span> Vol
-      </button>
-      <button class="btn icon-btn" onclick="setMute(true)" title="Mute">M</button>
-      <button class="btn icon-btn" onclick="setMute(false)" title="Unmute">U</button>
-      <button class="btn" onclick="volumeUp()" title="Volume Up">
-        Vol <span class="icon">+</span>
-      </button>
-    </section>
+      <!-- Quick Actions -->
+      <section class="actions">
+        <button class="btn action-btn" onclick="powerOn()" title="Power On">
+          Power On
+        </button>
+        <button
+          class="btn action-btn danger"
+          onclick="powerOff()"
+          title="Power Off">
+          Power Off
+        </button>
+        <button
+          class="btn action-btn"
+          onclick="sendButton('HOME')"
+          title="Home">
+          Home
+        </button>
+        <button
+          class="btn action-btn"
+          onclick="sendButton('BACK')"
+          title="Back">
+          &larr; Back
+        </button>
+        <button
+          class="btn action-btn"
+          id="wake-streaming-btn"
+          onclick="wakeStreamingDevice()"
+          title="Wake streaming device (Android TV, Roku)"
+          style="display: none">
+          Wake device
+        </button>
+      </section>
 
-    <!-- Quick Actions -->
-    <section class="actions">
-      <button class="btn action-btn" onclick="powerOn()" title="Power On">
-        Power On
-      </button>
-      <button class="btn action-btn danger" onclick="powerOff()" title="Power Off">
-        Power Off
-      </button>
-      <button class="btn action-btn" onclick="sendButton('HOME')" title="Home">
-        Home
-      </button>
-      <button class="btn action-btn" onclick="sendButton('BACK')" title="Back">
-        &larr; Back
-      </button>
-    </section>
+      <!-- Keyboard Shortcuts (collapsible) -->
+      <section id="shortcuts-panel" class="shortcuts-panel collapsed">
+        <button
+          class="shortcuts-toggle"
+          type="button"
+          onclick="toggleShortcuts()">
+          <span class="icon">&#x2328;</span> Keyboard shortcuts
+          <span class="arrow">&#x25BC;</span>
+        </button>
+        <div class="shortcuts-content">
+          <small class="hint shortcuts-hint"
+            >Click a field and press keys. Check &quot;Global&quot; to use the
+            shortcut when the window is closed.</small
+          >
+          <div id="shortcuts-list" class="shortcuts-list"></div>
+        </div>
+      </section>
+    </div>
 
-    <!-- Keyboard Shortcuts (collapsible) -->
-    <section id="shortcuts-panel" class="shortcuts-panel collapsed">
-      <button class="shortcuts-toggle" type="button" onclick="toggleShortcuts()">
-        <span class="icon">&#x2328;</span> Keyboard shortcuts
-        <span class="arrow">&#x25BC;</span>
-      </button>
-      <div class="shortcuts-content">
-        <small class="hint shortcuts-hint">Click a field and press keys. Check &quot;Global&quot; to use the shortcut when the window is closed.</small>
-        <div id="shortcuts-list" class="shortcuts-list"></div>
-      </div>
-    </section>
-  </div>
-
-  <script src="main.js"></script>
-</body>
+    <script src="main.js"></script>
+  </body>
 </html>

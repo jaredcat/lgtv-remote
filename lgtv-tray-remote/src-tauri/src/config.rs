@@ -30,6 +30,50 @@ pub struct TvConfig {
     pub use_ssl: bool,
 }
 
+/// Optional streaming device (Android TV, Roku, etc.) to wake when it's in standby.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StreamingDeviceConfig {
+    /// Wake via Wake-on-LAN (works for Android TV / NVIDIA Shield, many set-top boxes on Ethernet).
+    /// broadcast_ip: optional subnet broadcast (e.g. 10.0.0.255) — try this if 255.255.255.255 doesn't work.
+    Wol {
+        mac: String,
+        #[serde(default)]
+        broadcast_ip: Option<String>,
+    },
+    /// Wake via ADB (Android Debug Bridge). Requires Network debugging enabled on the device.
+    Adb {
+        ip: String,
+        #[serde(default)]
+        port: Option<u16>,
+    },
+    /// Wake via Roku ECP (HTTP keypress/PowerOn).
+    Roku { ip: String },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    #[serde(default)]
+    pub tvs: HashMap<String, TvConfig>,
+    #[serde(default)]
+    pub active_tv: Option<String>,
+    /// Optional streaming device to wake (e.g. Shield, Roku). When set, "Wake streaming device" is available.
+    #[serde(default)]
+    pub streaming_device: Option<StreamingDeviceConfig>,
+    /// If true, also send wake to streaming device when user triggers "Power On" (TV WoL).
+    #[serde(default)]
+    pub wake_streaming_on_power_on: bool,
+    #[serde(default = "default_shortcut")]
+    pub global_shortcut: String,
+    #[serde(default)]
+    pub shortcut_enabled: bool,
+    /// Action id -> shortcut config (shortcut string, global). Keys match frontend ACTION_IDS.
+    #[serde(default = "default_action_shortcuts")]
+    pub action_shortcuts: HashMap<String, ActionShortcutConfig>,
+    #[serde(default)]
+    pub window_size: Option<WindowSize>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowSize {
     pub width: u32,
@@ -40,23 +84,6 @@ impl Default for WindowSize {
     fn default() -> Self {
         Self { width: 300, height: 400 }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Config {
-    #[serde(default)]
-    pub tvs: HashMap<String, TvConfig>,
-    #[serde(default)]
-    pub active_tv: Option<String>,
-    #[serde(default = "default_shortcut")]
-    pub global_shortcut: String,
-    #[serde(default)]
-    pub shortcut_enabled: bool,
-    /// Action id -> shortcut config (shortcut string, global). Keys match frontend ACTION_IDS.
-    #[serde(default = "default_action_shortcuts")]
-    pub action_shortcuts: HashMap<String, ActionShortcutConfig>,
-    #[serde(default)]
-    pub window_size: Option<WindowSize>,
 }
 
 fn default_action_shortcuts() -> HashMap<String, ActionShortcutConfig> {
@@ -77,6 +104,7 @@ fn default_action_shortcuts() -> HashMap<String, ActionShortcutConfig> {
     m.insert("unmute".to_string(), default("Shift+=", false));
     m.insert("power_on".to_string(), default("F7", false));
     m.insert("power_off".to_string(), default("F8", false));
+    m.insert("wake_streaming_device".to_string(), default("", false));
     m.insert("home".to_string(), default("Home", false));
     m
 }
@@ -90,6 +118,8 @@ impl Default for Config {
         Self {
             tvs: HashMap::new(),
             active_tv: None,
+            streaming_device: None,
+            wake_streaming_on_power_on: false,
             global_shortcut: default_shortcut(),
             shortcut_enabled: false,
             action_shortcuts: default_action_shortcuts(),
@@ -151,5 +181,9 @@ impl Config {
         if let Some(tv) = self.tvs.get_mut(name) {
             tv.mac = Some(mac);
         }
+    }
+
+    pub fn set_streaming_device(&mut self, device: Option<StreamingDeviceConfig>) {
+        self.streaming_device = device;
     }
 }
