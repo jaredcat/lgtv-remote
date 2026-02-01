@@ -25,6 +25,7 @@ use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
 
 // When true, cancel the pending hide scheduled on Focused(false) (e.g. user is resizing).
+#[cfg(target_os = "windows")]
 static CANCEL_PENDING_HIDE: AtomicBool = AtomicBool::new(false);
 
 /// On Windows with decorations: false, the OS adds ~16×9 to inner size to get outer.
@@ -116,6 +117,24 @@ async fn connect(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult
         config.update_client_key(&name, key.clone());
         let _ = config.save();
     }
+
+    // Spawn keepalive task to prevent idle connection drops (routers/TVs often close idle sockets)
+    let state_keepalive = state.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            let mut tv = state_keepalive.tv.lock().await;
+            if !tv.connected {
+                break;
+            }
+            if let Err(e) = tv.keepalive_ping().await {
+                log::warn!("Keepalive failed, connection dropped: {}", e);
+                break;
+            }
+        }
+    });
 
     Ok(result)
 }
@@ -371,21 +390,18 @@ async fn reset_window_size(
         config.window_size = None;
         config.save()?;
     }
-    // Use default size from tauri.conf.json (app.windows[0])
+    // Use default size from tauri.conf.json (app.windows[0]). Use Logical size so the window
+    // has the same apparent size on all displays (e.g. Retina 2x vs 1x); Physical would make
+    // the window look tiny on high-DPI Macs.
     let (width, height) = app
         .config()
         .app
         .windows
         .first()
-        .map(|w| (w.width as u32, w.height as u32))
-        .unwrap_or((330, 520));
+        .map(|w| (w.width as f64, w.height as f64))
+        .unwrap_or((375.0, 525.0));
     if let Some(window) = app.get_webview_window("main") {
-        // set_size sets the inner (content) size. get_window_size returns outer_size(), so on
-        // Windows the OS adds a few pixels for the undecorated frame (e.g. 400×550 → 416×559).
-        let _ = window.set_size(tauri::Size::Physical(tauri::PhysicalSize {
-            width,
-            height,
-        }));
+        let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
     }
     Ok(())
 }
@@ -460,6 +476,38 @@ async fn set_action_shortcuts(
     Ok(())
 }
 
+/// Run an action by id (used for global shortcuts so they work when window is hidden).
+async fn run_action_impl(state: Arc<AppState>, action_id: &str) -> Result<(), String> {
+    let mut tv = state.tv.lock().await;
+    match action_id {
+        "up" => tv.send_button("UP").await.map(|_| ()),
+        "down" => tv.send_button("DOWN").await.map(|_| ()),
+        "left" => tv.send_button("LEFT").await.map(|_| ()),
+        "right" => tv.send_button("RIGHT").await.map(|_| ()),
+        "enter" => tv.send_button("ENTER").await.map(|_| ()),
+        "back" => tv.send_button("BACK").await.map(|_| ()),
+        "volume_up" => tv.volume_up().await.map(|_| ()),
+        "volume_down" => tv.volume_down().await.map(|_| ()),
+        "mute" => tv.set_mute(true).await.map(|_| ()),
+        "unmute" => tv.set_mute(false).await.map(|_| ()),
+        "power_off" => tv.power_off().await.map(|_| ()),
+        "home" => tv.send_button("HOME").await.map(|_| ()),
+        "power_on" => {
+            drop(tv);
+            let config = state.config.lock().await;
+            let (_, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
+            let mac = tv_config
+                .mac
+                .as_ref()
+                .ok_or("MAC address not saved")?
+                .clone();
+            drop(config);
+            tv::wake_on_lan(&mac).map(|_| ())
+        }
+        _ => Ok(()),
+    }
+}
+
 /// Modifier key names (case-insensitive). Global hotkeys must include at least one
 /// so they don't capture keys during normal typing.
 const GLOBAL_MODIFIERS: &[&str] = &["ctrl", "control", "alt", "shift", "super", "command", "meta"];
@@ -532,11 +580,23 @@ fn register_all_global_shortcuts(app: &AppHandle) -> Result<(), String> {
             }
         };
         let action_id_emit = action_id.clone();
+        let action_id_run = action_id.clone();
         let app_handle = app.clone();
-        if let Err(e) = manager.on_shortcut(shortcut, move |_app, _shortcut, event| {
+        if let Err(e) = manager.on_shortcut(shortcut, move |app, _shortcut, event| {
             if event.state != ShortcutState::Released {
                 return;
             }
+            // Run action in Rust so it works when window is hidden
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                let state = state.inner().clone();
+                let action_id = action_id_run.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = run_action_impl(state, &action_id).await {
+                        log::warn!("Global shortcut action {} failed: {}", action_id, e);
+                    }
+                });
+            }
+            // Also emit to frontend so UI can update when window is visible
             if let Some(window) = app_handle.get_webview_window("main") {
                 let _ = window.emit("run-command", &action_id_emit);
             }
@@ -620,7 +680,7 @@ fn main() {
         None::<Vec<&str>>,
     ));
 
-    let app = builder
+    let mut app = builder
         .manage(state.clone())
         .setup(|app| {
             // Hide window on startup - we're a tray app
@@ -639,7 +699,7 @@ fn main() {
 
                 // Handle window events
                 let window_clone = window.clone();
-                let app_handle = app.app_handle().clone();
+                let _app_handle = app.app_handle().clone();
                 window.on_window_event(move |event| {
                     match event {
                         // On Windows, clicking X sends CloseRequested and destroys the window
@@ -657,7 +717,7 @@ fn main() {
                             {
                                 CANCEL_PENDING_HIDE.store(false, Ordering::SeqCst);
                                 let w = window_clone.clone();
-                                let a = app_handle.clone();
+                                let a = _app_handle.clone();
                                 std::thread::spawn(move || {
                                     std::thread::sleep(std::time::Duration::from_millis(200));
                                     if !CANCEL_PENDING_HIDE.load(Ordering::SeqCst) {

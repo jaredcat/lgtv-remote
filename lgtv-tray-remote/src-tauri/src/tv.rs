@@ -362,6 +362,14 @@ impl TvConnection {
         Ok(CommandResult::ok_with_message("TV powered off"))
     }
 
+    /// Lightweight keepalive to prevent idle connection drops.
+    /// Sends a minimal SSAP request; if it fails, connection is marked disconnected.
+    pub async fn keepalive_ping(&mut self) -> Result<(), String> {
+        self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None)
+            .await
+            .map(|_| ())
+    }
+
     pub async fn get_network_info(&mut self) -> Result<Value, String> {
         // Get MAC addresses from getinfo endpoint
         self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None).await
