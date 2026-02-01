@@ -1,18 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LG TV Remote",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "identifier": "com.lgtv.remote",
   "build": {
     "frontendDist": "../src"
   },
   "app": {
     "withGlobalTauri": true,
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": true,
-      "title": "LG TV Remote"
-    },
     "windows": [
       {
         "label": "main",
