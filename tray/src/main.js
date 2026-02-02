@@ -986,6 +986,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadConfig();
   setupShortcutRecorder();
   listenRunCommand();
+  listenConnectionLost();
 });
 
 function listenRunCommand() {
@@ -995,6 +996,15 @@ function listenRunCommand() {
       if (actionId && typeof runAction === 'function') {
         runAction(actionId);
       }
+    });
+  }
+}
+
+// When keepalive detects connection dropped in background, sync UI
+function listenConnectionLost() {
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('connection-lost', () => {
+      setStatus(false, 'Disconnected');
     });
   }
 }

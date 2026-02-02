@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Install the plasmoid (so you're testing the latest) and run it in a window.
+# Requires: kpackagetool6, plasmawindowed (from your Plasma installation)
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+echo "Installing widget..."
+./install.sh
+
+echo ""
+echo "Launching widget in window (plasmawindowed)..."
+echo "Close the window when done."
+echo ""
+
+if command -v plasmawindowed &>/dev/null; then
+    exec plasmawindowed com.codekitties.lgtv.remote
+elif command -v plasmawindowed6 &>/dev/null; then
+    exec plasmawindowed6 com.codekitties.lgtv.remote
+else
+    echo "plasmawindowed not found in PATH."
+    echo "Run this from a Plasma session, or add Plasma to your PATH."
+    echo "Then run: plasmawindowed com.codekitties.lgtv.remote"
+    exit 1
+fi

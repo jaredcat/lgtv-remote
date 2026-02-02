@@ -22,5 +22,113 @@
             <label>Use SSL</label>
             <whatsthis>Use secure WebSocket connection (required for newer firmware)</whatsthis>
         </entry>
+        <entry name="tvMac"
+               type="String">
+            <default></default>
+            <label>TV MAC address (for Power On / Wake-on-LAN)</label>
+            <whatsthis>Optional. Enter manually or use Fetch MAC when connected.</whatsthis>
+        </entry>
+        <entry name="wakeStreamingOnPowerOn"
+               type="Bool">
+            <default>false</default>
+            <label>Wake streaming device when using Power On</label>
+            <whatsthis>When enabled, Power On will also wake the configured streaming device (e.g. Android TV, Roku)</whatsthis>
+        </entry>
+        <entry name="streamingDeviceType"
+               type="String">
+            <default></default>
+            <label>Streaming device type</label>
+            <whatsthis>Type: wol (Wake-on-LAN), adb (Android Debug Bridge), roku, or empty for none</whatsthis>
+        </entry>
+        <entry name="streamingDeviceMac"
+               type="String">
+            <default></default>
+            <label>Streaming device MAC (for WoL)</label>
+        </entry>
+        <entry name="streamingDeviceBroadcastIp"
+               type="String">
+            <default></default>
+            <label>Streaming device broadcast IP (optional for WoL)</label>
+        </entry>
+        <entry name="streamingDeviceIp"
+               type="String">
+            <default></default>
+            <label>Streaming device IP (for ADB/Roku)</label>
+        </entry>
+        <entry name="streamingDevicePort"
+               type="Int">
+            <default>5555</default>
+            <label>Streaming device ADB port</label>
+        </entry>
+        <entry name="shortcutUp"
+               type="String">
+            <default>Up</default>
+            <label>Shortcut: Up</label>
+        </entry>
+        <entry name="shortcutDown"
+               type="String">
+            <default>Down</default>
+            <label>Shortcut: Down</label>
+        </entry>
+        <entry name="shortcutLeft"
+               type="String">
+            <default>Left</default>
+            <label>Shortcut: Left</label>
+        </entry>
+        <entry name="shortcutRight"
+               type="String">
+            <default>Right</default>
+            <label>Shortcut: Right</label>
+        </entry>
+        <entry name="shortcutEnter"
+               type="String">
+            <default>Return</default>
+            <label>Shortcut: OK / Enter</label>
+        </entry>
+        <entry name="shortcutBack"
+               type="String">
+            <default>Backspace</default>
+            <label>Shortcut: Back</label>
+        </entry>
+        <entry name="shortcutHome"
+               type="String">
+            <default>Home</default>
+            <label>Shortcut: Home</label>
+        </entry>
+        <entry name="shortcutVolumeUp"
+               type="String">
+            <default>=</default>
+            <label>Shortcut: Volume Up</label>
+        </entry>
+        <entry name="shortcutVolumeDown"
+               type="String">
+            <default>-</default>
+            <label>Shortcut: Volume Down</label>
+        </entry>
+        <entry name="shortcutMute"
+               type="String">
+            <default>Shift+-</default>
+            <label>Shortcut: Mute</label>
+        </entry>
+        <entry name="shortcutUnmute"
+               type="String">
+            <default>Shift+=</default>
+            <label>Shortcut: Unmute</label>
+        </entry>
+        <entry name="shortcutPowerOn"
+               type="String">
+            <default>F7</default>
+            <label>Shortcut: Power On</label>
+        </entry>
+        <entry name="shortcutPowerOff"
+               type="String">
+            <default>F8</default>
+            <label>Shortcut: Power Off</label>
+        </entry>
+        <entry name="shortcutWakeStreaming"
+               type="String">
+            <default></default>
+            <label>Shortcut: Wake streaming device</label>
+        </entry>
     </group>
 </kcfg>

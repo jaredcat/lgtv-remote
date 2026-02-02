@@ -1,6 +1,6 @@
 [package]
 name = "lgtv-tray-remote"
-version = "1.2.0"
+version = "1.2.1"
 description = "Cross-platform system tray remote for LG webOS TVs"
 authors = [""]
 edition = "2024"
@@ -13,6 +13,7 @@ tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = { version = "2.5", optional = true }
+auto-launch = { version = "0.6", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -27,7 +28,7 @@ env_logger = "0.11"
 [features]
 default = ["custom-protocol", "autostart"]
 custom-protocol = ["tauri/custom-protocol"]
-autostart = ["tauri-plugin-autostart"]
+autostart = ["tauri-plugin-autostart", "auto-launch"]
 
 [profile.release]
 strip = true

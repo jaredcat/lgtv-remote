@@ -27,18 +27,21 @@ if ! python3 -c "import websockets" 2>/dev/null; then
     echo ""
 fi
 
-# Remove old installation if exists
+# Install or update the plasmoid
 if kpackagetool6 -t Plasma/Applet -l 2>/dev/null | grep -q "$PLASMOID_ID"; then
-    echo "Removing previous installation..."
-    kpackagetool6 -t Plasma/Applet -r "$PLASMOID_ID" 2>/dev/null || true
+    echo "Updating existing installation..."
+    kpackagetool6 -t Plasma/Applet -u "$PACKAGE_DIR"
+else
+    echo "Installing plasmoid from $PACKAGE_DIR..."
+    kpackagetool6 -t Plasma/Applet -i "$PACKAGE_DIR"
 fi
-
-# Install the plasmoid
-echo "Installing plasmoid from $PACKAGE_DIR..."
-kpackagetool6 -t Plasma/Applet -i "$PACKAGE_DIR"
 
 echo ""
 echo "Installation complete!"
+echo ""
+echo "If the widget is already on your panel/desktop and you don't see changes:"
+echo "  - Remove it (right-click widget → Remove), then add it again (Add Widgets → LG TV Remote), or"
+echo "  - Log out and back in (or restart Plasma) so it reloads the new code."
 echo ""
 echo "To use the widget:"
 echo "  1. Right-click on your panel or desktop"

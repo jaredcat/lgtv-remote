@@ -30,13 +30,24 @@ def load_config():
     """Load saved TV configurations."""
     if CONFIG_FILE.exists():
         try:
-            return json.loads(CONFIG_FILE.read_text())
-        except:
+            data = json.loads(CONFIG_FILE.read_text())
+            if "streaming_device" not in data:
+                data["streaming_device"] = None
+            if "wake_streaming_on_power_on" not in data:
+                data["wake_streaming_on_power_on"] = False
+            if "active_tv" not in data:
+                data["active_tv"] = None
+            return data
+        except Exception:
             pass
-    return {"tvs": {}}
+    return {"tvs": {}, "streaming_device": None, "wake_streaming_on_power_on": False, "active_tv": None}
 
 def save_config(config):
-    """Save TV configurations."""
+    """Save TV configurations. Preserves streaming_device, wake_streaming_on_power_on, active_tv if not in config."""
+    current = load_config()
+    for key in ("streaming_device", "wake_streaming_on_power_on", "active_tv"):
+        if key not in config:
+            config[key] = current.get(key)
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2))
 
@@ -280,26 +291,70 @@ async def run_command(ip, name, command, args=None, use_ssl=True):
         await client.close()
 
 
-async def wake_on_lan_async(name):
-    """Send Wake-on-LAN magic packet to turn on TV."""
+def _wol_send(mac, broadcast_ip=None):
+    """Send Wake-on-LAN magic packet. broadcast_ip: optional subnet broadcast (e.g. 10.0.0.255)."""
     import socket
-    
+    mac_clean = mac.replace(":", "").replace("-", "").replace(" ", "")
+    mac_bytes = bytes.fromhex(mac_clean)
+    magic_packet = b'\xff' * 6 + mac_bytes * 16
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    sock.sendto(magic_packet, ('255.255.255.255', 9))
+    if broadcast_ip and str(broadcast_ip).strip():
+        for port in (9, 7):
+            try:
+                sock.sendto(magic_packet, (str(broadcast_ip).strip(), port))
+            except Exception:
+                pass
+    sock.close()
+
+
+def _wake_streaming_device(device):
+    """Wake a streaming device (WoL, ADB, or Roku). device is dict with type and params."""
+    if not device or not isinstance(device, dict):
+        return
+    kind = device.get("type", "").lower()
+    if kind == "wol":
+        mac = device.get("mac")
+        if mac:
+            _wol_send(mac, device.get("broadcast_ip"))
+    elif kind == "adb":
+        ip = device.get("ip")
+        port = device.get("port", 5555)
+        if ip:
+            import subprocess
+            try:
+                subprocess.run(["adb", "connect", f"{ip}:{port}"], capture_output=True, timeout=10)
+                subprocess.run(["adb", "-s", f"{ip}:{port}", "shell", "input", "keyevent", "KEYCODE_WAKEUP"], capture_output=True, timeout=10)
+            except Exception:
+                pass
+    elif kind == "roku":
+        ip = device.get("ip")
+        if ip:
+            import socket
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(3)
+                s.connect((ip, 8060))
+                s.sendall(f"POST /keypress/PowerOn HTTP/1.1\r\nHost: {ip}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".encode())
+                s.close()
+            except Exception:
+                pass
+
+
+async def wake_on_lan_async(name):
+    """Send Wake-on-LAN magic packet to turn on TV. Optionally wake streaming device too."""
     config = load_config()
     tv_config = config.get("tvs", {}).get(name, {})
     mac = tv_config.get("mac")
-    
+
     if not mac:
         return {"success": False, "error": "MAC address not saved. Turn TV on, run Auth to save MAC."}
-    
+
     try:
-        mac_bytes = bytes.fromhex(mac.replace(":", "").replace("-", ""))
-        magic_packet = b'\xff' * 6 + mac_bytes * 16
-        
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(magic_packet, ('255.255.255.255', 9))
-        sock.close()
-        
+        _wol_send(mac, None)
+        if config.get("wake_streaming_on_power_on") and config.get("streaming_device"):
+            _wake_streaming_device(config["streaming_device"])
         return {"success": True, "message": "Wake-on-LAN packet sent"}
     except Exception as e:
         return {"success": False, "error": f"WoL failed: {e}"}

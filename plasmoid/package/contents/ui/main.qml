@@ -20,6 +20,35 @@ PlasmoidItem {
     property bool useSsl: Plasmoid.configuration.useSsl !== undefined ? Plasmoid.configuration.useSsl : true
     property bool tvConnected: tvName !== "" && tvIp !== ""
     property string statusMessage: tvConnected ? "Ready" : "Not connected"
+    property string tvMac: Plasmoid.configuration.tvMac || ""
+
+    property bool settingsExpanded: false
+    property bool shortcutsExpanded: false
+
+    property bool wakeStreamingOnPowerOn: Plasmoid.configuration.wakeStreamingOnPowerOn || false
+    property string streamingDeviceType: Plasmoid.configuration.streamingDeviceType || ""
+    property string streamingDeviceMac: Plasmoid.configuration.streamingDeviceMac || ""
+    property string streamingDeviceBroadcastIp: Plasmoid.configuration.streamingDeviceBroadcastIp || ""
+    property string streamingDeviceIp: Plasmoid.configuration.streamingDeviceIp || ""
+    property int streamingDevicePort: Plasmoid.configuration.streamingDevicePort !== undefined ? Plasmoid.configuration.streamingDevicePort : 5555
+    property bool hasStreamingDevice: streamingDeviceType === "wol" && streamingDeviceMac !== "" || streamingDeviceType === "adb" && streamingDeviceIp !== "" || streamingDeviceType === "roku" && streamingDeviceIp !== ""
+
+    // Configurable shortcuts (when widget has focus); defaults from main.xml
+    property string shortcutUp: Plasmoid.configuration.shortcutUp || "Up"
+    property string shortcutDown: Plasmoid.configuration.shortcutDown || "Down"
+    property string shortcutLeft: Plasmoid.configuration.shortcutLeft || "Left"
+    property string shortcutRight: Plasmoid.configuration.shortcutRight || "Right"
+    property string shortcutEnter: Plasmoid.configuration.shortcutEnter || "Return"
+    property string shortcutBack: Plasmoid.configuration.shortcutBack || "Backspace"
+    property string shortcutHome: Plasmoid.configuration.shortcutHome || "Home"
+    property string shortcutVolumeUp: Plasmoid.configuration.shortcutVolumeUp || "="
+    property string shortcutVolumeDown: Plasmoid.configuration.shortcutVolumeDown || "-"
+    property string shortcutMute: Plasmoid.configuration.shortcutMute || "Shift+-"
+    property string shortcutUnmute: Plasmoid.configuration.shortcutUnmute || "Shift+="
+    property string shortcutPowerOn: Plasmoid.configuration.shortcutPowerOn || "F7"
+    property string shortcutPowerOff: Plasmoid.configuration.shortcutPowerOff || "F8"
+    property string shortcutWakeStreaming: Plasmoid.configuration.shortcutWakeStreaming || ""
+    property string appVersion: "2.0"
 
     // Path to bundled Python scripts
     readonly property string scriptPath: Qt.resolvedUrl("../code/lgtv_remote.py").toString().replace("file://", "")
@@ -48,13 +77,16 @@ PlasmoidItem {
             // Handle daemon status check
             if (source.indexOf("status") !== -1) {
                 if (result && result.running) {
+                    var wasConnected = daemonConnected
                     daemonConnected = result.connected || false
+                    if (wasConnected && !daemonConnected) {
+                        statusMessage = "Connection lost"
+                    }
                     if (!daemonConnected && tvConnected) {
-                        // Daemon running but not connected - connect it
                         connectDaemon()
                     }
                 } else {
-                    // Daemon not running - start it
+                    daemonConnected = false
                     startDaemon()
                 }
                 executable.disconnectSource(source)
@@ -85,7 +117,12 @@ PlasmoidItem {
 
             // Handle regular command response
             if (result && result.success) {
-                statusMessage = "OK"
+                statusMessage = result.message || "OK"
+                // After Fetch MAC, update TV MAC field from message (e.g. "MAC address saved: AA:BB:CC:DD:EE:FF")
+                if (result.message && result.message.indexOf("MAC address saved:") === 0) {
+                    var mac = result.message.replace("MAC address saved:", "").trim()
+                    if (mac) Plasmoid.configuration.tvMac = mac
+                }
             } else if (result && result.error) {
                 statusMessage = "Error"
                 // If daemon reports not connected, try reconnecting
@@ -188,10 +225,45 @@ PlasmoidItem {
         daemonConnected = false
     }
 
+    function fetchMac() {
+        if (!daemonConnected) return
+        executable.exec("python3 '" + daemonPath + "' send fetch_mac ''")
+    }
+
+    function buildStreamingDeviceJson() {
+        if (streamingDeviceType === "wol" && streamingDeviceMac)
+            return '{"type":"wol","mac":"' + streamingDeviceMac.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"' + (streamingDeviceBroadcastIp ? ',"broadcast_ip":"' + streamingDeviceBroadcastIp.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"' : '') + '}'
+        if (streamingDeviceType === "adb" && streamingDeviceIp)
+            return '{"type":"adb","ip":"' + streamingDeviceIp.replace(/"/g, '\\"') + '","port":' + streamingDevicePort + '}'
+        if (streamingDeviceType === "roku" && streamingDeviceIp)
+            return '{"type":"roku","ip":"' + streamingDeviceIp.replace(/"/g, '\\"') + '"}'
+        return 'null'
+    }
+
+    function pushStreamingConfigToDaemon() {
+        var deviceJson = buildStreamingDeviceJson()
+        var escaped = deviceJson.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+        executable.exec("python3 '" + daemonPath + "' setconfig streaming_device \"" + escaped + "\"")
+        executable.exec("python3 '" + daemonPath + "' setconfig wake_streaming_on_power_on " + (wakeStreamingOnPowerOn ? "true" : "false"))
+    }
+
+    function saveTvMac() {
+        if (tvName && tvMac && tvMac.replace(/[\s:\-]/g, "").length === 12) {
+            executable.exec("python3 '" + daemonPath + "' setmac '" + tvName.replace(/'/g, "'\\''") + "' '" + tvMac.replace(/'/g, "'\\''") + "'")
+        }
+    }
+
     function saveSettings() {
         Plasmoid.configuration.tvName = tvName
         Plasmoid.configuration.tvIp = tvIp
         Plasmoid.configuration.useSsl = useSsl
+        Plasmoid.configuration.wakeStreamingOnPowerOn = wakeStreamingOnPowerOn
+        Plasmoid.configuration.streamingDeviceType = streamingDeviceType
+        Plasmoid.configuration.streamingDeviceMac = streamingDeviceMac
+        Plasmoid.configuration.streamingDeviceBroadcastIp = streamingDeviceBroadcastIp
+        Plasmoid.configuration.streamingDeviceIp = streamingDeviceIp
+        Plasmoid.configuration.streamingDevicePort = streamingDevicePort
+        pushStreamingConfigToDaemon()
     }
 
     // Keyboard shortcuts
@@ -257,6 +329,22 @@ PlasmoidItem {
         focus: true
         Keys.forwardTo: [root]
 
+        // Configurable shortcuts (when widget has focus and sequence is set)
+        Shortcut { sequence: root.shortcutUp; enabled: root.shortcutUp !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["UP"]) }
+        Shortcut { sequence: root.shortcutDown; enabled: root.shortcutDown !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["DOWN"]) }
+        Shortcut { sequence: root.shortcutLeft; enabled: root.shortcutLeft !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["LEFT"]) }
+        Shortcut { sequence: root.shortcutRight; enabled: root.shortcutRight !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["RIGHT"]) }
+        Shortcut { sequence: root.shortcutEnter; enabled: root.shortcutEnter !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["ENTER"]) }
+        Shortcut { sequence: root.shortcutBack; enabled: root.shortcutBack !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["BACK"]) }
+        Shortcut { sequence: root.shortcutHome; enabled: root.shortcutHome !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["HOME"]) }
+        Shortcut { sequence: root.shortcutVolumeUp; enabled: root.shortcutVolumeUp !== "" && root.tvConnected; onActivated: root.sendCommand("volumeUp") }
+        Shortcut { sequence: root.shortcutVolumeDown; enabled: root.shortcutVolumeDown !== "" && root.tvConnected; onActivated: root.sendCommand("volumeDown") }
+        Shortcut { sequence: root.shortcutMute; enabled: root.shortcutMute !== "" && root.tvConnected; onActivated: root.sendCommand("mute", ["true"]) }
+        Shortcut { sequence: root.shortcutUnmute; enabled: root.shortcutUnmute !== "" && root.tvConnected; onActivated: root.sendCommand("mute", ["false"]) }
+        Shortcut { sequence: root.shortcutPowerOn; enabled: root.shortcutPowerOn !== "" && root.tvConnected; onActivated: root.sendCommand("on") }
+        Shortcut { sequence: root.shortcutPowerOff; enabled: root.shortcutPowerOff !== "" && root.tvConnected; onActivated: root.sendCommand("off") }
+        Shortcut { sequence: root.shortcutWakeStreaming; enabled: root.shortcutWakeStreaming !== "" && root.hasStreamingDevice; onActivated: root.sendCommand("wake_streaming_device") }
+
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing
@@ -278,73 +366,174 @@ PlasmoidItem {
                 }
             }
 
-            // Connection section
+            // Settings (collapsible): Connection + streaming device + version
             Kirigami.Separator { Layout.fillWidth: true }
-
             ColumnLayout {
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                PlasmaComponents.Label {
-                    text: "Connection"
-                    font.bold: true
-                }
-
-                RowLayout {
-                    PlasmaComponents.Label {
-                        text: "TV Name:"
-                        Layout.minimumWidth: Kirigami.Units.gridUnit * 5
+                spacing: 0
+                MouseArea {
+                    Layout.fillWidth: true
+                    implicitHeight: settingsHeaderRow.implicitHeight
+                    onClicked: root.settingsExpanded = !root.settingsExpanded
+                    RowLayout {
+                        id: settingsHeaderRow
+                        anchors.fill: parent
+                        PlasmaComponents.Label {
+                            text: "Settings"
+                            font.bold: true
+                        }
+                        Item { Layout.fillWidth: true }
+                        Kirigami.Icon {
+                            source: "arrow-down"
+                            width: Kirigami.Units.iconSizes.small
+                            height: width
+                            rotation: root.settingsExpanded ? 0 : -90
+                        }
                     }
-                    PlasmaComponents.TextField {
-                        id: tvNameField
+                }
+                ColumnLayout {
+                    id: settingsContent
+                    Layout.fillWidth: true
+                    visible: root.settingsExpanded
+                    spacing: Kirigami.Units.smallSpacing
+                    Layout.topMargin: root.settingsExpanded ? Kirigami.Units.smallSpacing : 0
+
+                    // Connection (inside Settings, like tray app)
+                    PlasmaComponents.Label { text: "Connection"; font.bold: true }
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.tvName
-                        placeholderText: "e.g., LivingRoomTV"
-                        onTextChanged: {
-                            root.tvName = text
-                            root.saveSettings()
+                        PlasmaComponents.Label { text: "TV Name:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            id: tvNameField
+                            Layout.fillWidth: true
+                            text: root.tvName
+                            placeholderText: "e.g., LivingRoomTV"
+                            onTextChanged: { root.tvName = text; root.saveSettings() }
                         }
                     }
-                }
-
-                RowLayout {
-                    PlasmaComponents.Label {
-                        text: "TV IP:"
-                        Layout.minimumWidth: Kirigami.Units.gridUnit * 5
-                    }
-                    PlasmaComponents.TextField {
-                        id: tvIpField
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.tvIp
-                        placeholderText: "192.168.1.100"
-                        onTextChanged: {
-                            root.tvIp = text
-                            root.saveSettings()
+                        PlasmaComponents.Label { text: "TV IP:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            id: tvIpField
+                            Layout.fillWidth: true
+                            text: root.tvIp
+                            placeholderText: "192.168.1.100"
+                            onTextChanged: { root.tvIp = text; root.saveSettings() }
                         }
                     }
-                }
-
-                RowLayout {
-                    PlasmaComponents.CheckBox {
-                        id: sslCheckbox
-                        text: "Use SSL"
-                        checked: root.useSsl
-                        onCheckedChanged: {
-                            root.useSsl = checked
-                            root.saveSettings()
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.CheckBox {
+                            id: sslCheckbox
+                            text: "Use SSL"
+                            checked: root.useSsl
+                            onCheckedChanged: { root.useSsl = checked; root.saveSettings() }
                         }
                     }
-                    Item { Layout.fillWidth: true }
-                    PlasmaComponents.Button {
-                        text: "Scan"
-                        icon.name: "view-refresh"
-                        onClicked: root.scanForTVs()
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "TV MAC (Power On):"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "AA:BB:CC:DD:EE:FF or use Fetch MAC when connected"
+                            text: root.tvMac
+                            onTextChanged: { Plasmoid.configuration.tvMac = text; root.saveTvMac() }
+                        }
                     }
-                    PlasmaComponents.Button {
-                        text: "Auth"
-                        icon.name: "dialog-password"
-                        enabled: root.tvName !== "" && root.tvIp !== ""
-                        onClicked: root.authenticateTV()
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        PlasmaComponents.Button { text: "Scan"; icon.name: "view-refresh"; onClicked: root.scanForTVs() }
+                        PlasmaComponents.Button { text: "Auth"; icon.name: "dialog-password"; enabled: root.tvName !== "" && root.tvIp !== ""; onClicked: root.authenticateTV() }
+                        PlasmaComponents.Button { text: "Fetch MAC"; icon.name: "network-wired"; enabled: root.tvName !== "" && root.daemonConnected; onClicked: root.fetchMac() }
+                    }
+                    Kirigami.Separator { Layout.fillWidth: true }
+                    PlasmaComponents.Label { text: "Streaming device"; font.bold: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Type:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        QQC2.ComboBox {
+                            id: streamingTypeCombo
+                            Layout.fillWidth: true
+                            model: ["None", "Wake-on-LAN (WoL)", "ADB (Android)", "Roku"]
+                            property var values: ["", "wol", "adb", "roku"]
+                            currentIndex: {
+                                var i = values.indexOf(root.streamingDeviceType)
+                                return i >= 0 ? i : 0
+                            }
+                            onActivated: {
+                                Plasmoid.configuration.streamingDeviceType = values[currentIndex]
+                                root.saveSettings()
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: root.streamingDeviceType !== ""
+                        PlasmaComponents.CheckBox {
+                            id: wakeStreamingCheck
+                            text: "Wake streaming device when using Power On"
+                            checked: root.wakeStreamingOnPowerOn
+                            onCheckedChanged: {
+                                Plasmoid.configuration.wakeStreamingOnPowerOn = checked
+                                root.saveSettings()
+                            }
+                        }
+                    }
+                    RowLayout {
+                        visible: root.streamingDeviceType === "wol"
+                        PlasmaComponents.Label { text: "Device MAC (WoL):"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "AA:BB:CC:DD:EE:FF"
+                            text: root.streamingDeviceMac
+                            onTextChanged: { Plasmoid.configuration.streamingDeviceMac = text; root.saveSettings() }
+                        }
+                    }
+                    RowLayout {
+                        visible: root.streamingDeviceType === "wol"
+                        PlasmaComponents.Label { text: "Broadcast IP:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "optional, e.g. 10.0.0.255"
+                            text: root.streamingDeviceBroadcastIp
+                            onTextChanged: { Plasmoid.configuration.streamingDeviceBroadcastIp = text; root.saveSettings() }
+                        }
+                    }
+                    RowLayout {
+                        visible: root.streamingDeviceType === "adb" || root.streamingDeviceType === "roku"
+                        PlasmaComponents.Label { text: "Device IP:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            Layout.fillWidth: true
+                            placeholderText: "192.168.1.101"
+                            text: root.streamingDeviceIp
+                            onTextChanged: { Plasmoid.configuration.streamingDeviceIp = text; root.saveSettings() }
+                        }
+                    }
+                    RowLayout {
+                        visible: root.streamingDeviceType === "adb"
+                        PlasmaComponents.Label { text: "ADB port:"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField {
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 4
+                            placeholderText: "5555"
+                            text: root.streamingDevicePort > 0 ? root.streamingDevicePort : ""
+                            validator: IntValidator { bottom: 1; top: 65535 }
+                            onTextChanged: {
+                                var n = parseInt(text)
+                                if (!isNaN(n)) { Plasmoid.configuration.streamingDevicePort = n; root.saveSettings() }
+                            }
+                        }
+                    }
+                    Kirigami.Separator { Layout.fillWidth: true }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Item { Layout.fillWidth: true }
+                        PlasmaComponents.Label {
+                            text: "Version " + root.appVersion
+                            font: Kirigami.Theme.smallFont
+                            opacity: 0.8
+                        }
                     }
                 }
             }
@@ -473,18 +662,126 @@ PlasmoidItem {
                     Layout.fillWidth: true
                     onClicked: root.sendCommand("sendButton", ["BACK"])
                 }
+                PlasmaComponents.Button {
+                    text: "Wake streaming"
+                    icon.name: "preferences-system-power"
+                    Layout.fillWidth: true
+                    visible: root.hasStreamingDevice
+                    onClicked: root.sendCommand("wake_streaming_device")
+                }
             }
 
-            Item { Layout.fillHeight: true }
+            // Keyboard shortcuts (collapsible, below all buttons like tray app)
+            Kirigami.Separator { Layout.fillWidth: true }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                MouseArea {
+                    Layout.fillWidth: true
+                    implicitHeight: shortcutsHeaderRow.implicitHeight
+                    onClicked: root.shortcutsExpanded = !root.shortcutsExpanded
+                    RowLayout {
+                        id: shortcutsHeaderRow
+                        anchors.fill: parent
+                        PlasmaComponents.Label { text: "⌨️ Keyboard shortcuts"; font.bold: true }
+                        Item { Layout.fillWidth: true }
+                        Kirigami.Icon { source: "arrow-down"; width: Kirigami.Units.iconSizes.small; height: width; rotation: root.shortcutsExpanded ? 0 : -90 }
+                    }
+                }
+                ColumnLayout {
+                    id: shortcutsContent
+                    Layout.fillWidth: true
+                    visible: root.shortcutsExpanded
+                    spacing: Kirigami.Units.smallSpacing
+                    Layout.topMargin: root.shortcutsExpanded ? Kirigami.Units.smallSpacing : 0
+                    PlasmaComponents.Label {
+                        text: "Shortcuts work when the widget popup is focused. For global hotkeys (when the widget is not focused), use the tray app."
+                        wrapMode: Text.WordWrap
+                        font: Kirigami.Theme.smallFont
+                        opacity: 0.85
+                        Layout.fillWidth: true
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Up"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutUp; onTextChanged: Plasmoid.configuration.shortcutUp = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Down"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutDown; onTextChanged: Plasmoid.configuration.shortcutDown = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Left"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutLeft; onTextChanged: Plasmoid.configuration.shortcutLeft = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Right"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutRight; onTextChanged: Plasmoid.configuration.shortcutRight = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "OK / Enter"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutEnter; onTextChanged: Plasmoid.configuration.shortcutEnter = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Back"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutBack; onTextChanged: Plasmoid.configuration.shortcutBack = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Home"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutHome; onTextChanged: Plasmoid.configuration.shortcutHome = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Volume Up"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutVolumeUp; onTextChanged: Plasmoid.configuration.shortcutVolumeUp = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Volume Down"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutVolumeDown; onTextChanged: Plasmoid.configuration.shortcutVolumeDown = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Mute"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutMute; onTextChanged: Plasmoid.configuration.shortcutMute = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Unmute"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutUnmute; onTextChanged: Plasmoid.configuration.shortcutUnmute = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Power On"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutPowerOn; onTextChanged: Plasmoid.configuration.shortcutPowerOn = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Power Off"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutPowerOff; onTextChanged: Plasmoid.configuration.shortcutPowerOff = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Wake streaming device"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutWakeStreaming; onTextChanged: Plasmoid.configuration.shortcutWakeStreaming = text }
+                    }
+                }
+            }
 
-            // Help text
             PlasmaComponents.Label {
                 Layout.fillWidth: true
-                text: "Keys: Arrows, Enter, +/-, Shift+=Unmute, Shift+-=Mute"
+                text: "Shortcuts work when the widget popup is focused. See Keyboard shortcuts above for defaults."
                 wrapMode: Text.WordWrap
                 font: Kirigami.Theme.smallFont
                 opacity: 0.7
             }
+            Item { Layout.fillHeight: true }
         }
     }
 

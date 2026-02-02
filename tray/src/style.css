@@ -34,6 +34,16 @@ body {
   -webkit-user-select: none;
 }
 
+/* Emoji: use system emoji font and fixed size so layout doesn't break (e.g. on NixOS) */
+.emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Noto Emoji", "Twemoji Mozilla", sans-serif;
+  display: inline-block;
+  width: 1.15em;
+  text-align: center;
+  vertical-align: -0.15em;
+  line-height: 1;
+}
+
 html::-webkit-scrollbar {
   width: 10px;
 }

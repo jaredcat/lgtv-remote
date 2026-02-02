@@ -32,7 +32,10 @@
               echo "Install the widget:"
               echo "  ./install.sh"
               echo ""
-              echo "Test widget:"
+              echo "Develop / test in a window (install + run plasmawindowed):"
+              echo "  ./dev"
+              echo ""
+              echo "Or run plasmawindowed directly (after ./install.sh):"
               echo "  plasmawindowed com.codekitties.lgtv.remote"
               echo "═══════════════════════════════════════════════════════"
             '';

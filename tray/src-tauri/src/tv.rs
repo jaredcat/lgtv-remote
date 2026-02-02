@@ -259,6 +259,16 @@ impl TvConnection {
         Ok(())
     }
 
+    /// Refresh the input socket (used for d-pad, enter, back, etc.). The TV can close
+    /// this socket while the main SSAP socket stays open; we don't ping it, so
+    /// reconnect it periodically so button commands keep working.
+    pub async fn refresh_input_socket(&mut self) -> Result<(), String> {
+        if let Some(old) = self.input_ws.take() {
+            let _ = old.lock().await.close(None).await;
+        }
+        self.connect_input_socket().await
+    }
+
     pub async fn disconnect(&mut self) {
         self.connected = false;
         if let Some(ws) = self.input_ws.take() {
@@ -365,9 +375,17 @@ impl TvConnection {
     /// Lightweight keepalive to prevent idle connection drops.
     /// Sends a minimal SSAP request; if it fails, connection is marked disconnected.
     pub async fn keepalive_ping(&mut self) -> Result<(), String> {
-        self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None)
-            .await
-            .map(|_| ())
+        let uri = "ssap://com.webos.service.connectionmanager/getinfo";
+        match self.send_command(uri, None).await {
+            Ok(res) => {
+                log::debug!("Keepalive ping response: {:?}", res);
+                Ok(())
+            }
+            Err(e) => {
+                log::debug!("Keepalive ping error: {}", e);
+                Err(e)
+            }
+        }
     }
 
     pub async fn get_network_info(&mut self) -> Result<Value, String> {

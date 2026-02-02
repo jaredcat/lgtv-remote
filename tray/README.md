@@ -40,13 +40,13 @@ nix.settings = {
 **Run directly** (no install):
 
 ```bash
-nix run github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
+nix run github:jaredcat/plasmoid-lgtv-remote?dir=tray
 ```
 
 **Install to profile**:
 
 ```bash
-nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
+nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=tray
 ```
 
 **Add to NixOS configuration** (flake-based):
@@ -54,7 +54,7 @@ nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
 ```nix
 # flake.nix
 {
-  inputs.lgtv-remote.url = "github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote";
+  inputs.lgtv-remote.url = "github:jaredcat/plasmoid-lgtv-remote?dir=tray";
 }
 
 # configuration.nix
@@ -68,7 +68,7 @@ nix profile install github:jaredcat/plasmoid-lgtv-remote?dir=lgtv-tray-remote
 **Build locally**:
 
 ```bash
-cd lgtv-tray-remote
+cd tray
 nix build
 ./result/bin/lgtv-tray-remote
 ```
@@ -98,7 +98,7 @@ Then you can open the app normally.
 If you have Nix with flakes enabled:
 
 ```bash
-cd lgtv-tray-remote
+cd tray
 
 # Enter development shell with all dependencies
 nix develop
@@ -106,6 +106,18 @@ nix develop
 # Generate icons and build
 ./generate-icons.sh
 cargo tauri build
+```
+
+**Running the dev build on NixOS:** Use the flake directly (e.g. after a push to `dev`):
+
+```bash
+nix run github:jaredcat/plasmoid-lgtv-remote?ref=dev&dir=tray
+```
+
+Or from a local checkout: 
+
+```bash
+cd tray && nix run .#default
 ```
 
 #### Manual Setup

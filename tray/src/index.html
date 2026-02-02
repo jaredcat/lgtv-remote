@@ -21,11 +21,11 @@
               class="btn btn-status-connect"
               onclick="connectTv()"
               style="display: none">
-              Connect
+              <span class="emoji" aria-hidden="true">🔗</span> Connect
             </button>
           </div>
           <button class="btn-icon quit-btn" onclick="quitApp()" title="Quit">
-            &times;
+            <span class="emoji" aria-hidden="true">✕</span>
           </button>
         </div>
       </header>
@@ -33,7 +33,7 @@
       <!-- Settings Panel (collapsible) -->
       <section id="settings-panel" class="settings collapsed">
         <button class="settings-toggle" onclick="toggleSettings()">
-          <span class="icon">&#x2699;</span> Settings
+          <span class="emoji" aria-hidden="true">⚙️</span> Settings
           <span class="arrow">&#x25BC;</span>
         </button>
         <div class="settings-content">
@@ -53,9 +53,11 @@
           </div>
           <div class="button-row">
             <button class="btn secondary" onclick="authenticate()">
-              Authenticate
+              <span class="emoji" aria-hidden="true">🔐</span> Authenticate
             </button>
-            <button class="btn primary" onclick="connectTv()">Connect</button>
+            <button class="btn primary" onclick="connectTv()">
+              <span class="emoji" aria-hidden="true">🔗</span> Connect
+            </button>
           </div>
 
           <div class="settings-divider"></div>
@@ -83,7 +85,7 @@
                 onclick="clearGlobalShortcut()"
                 title="Clear shortcut"
                 aria-label="Clear shortcut">
-                &times;
+                <span class="emoji" aria-hidden="true">✕</span>
               </button>
             </div>
             <small class="hint" id="shortcut-hint"
@@ -255,41 +257,41 @@
       <!-- Volume Controls -->
       <section class="volume">
         <button class="btn" onclick="volumeDown()" title="Volume Down">
-          <span class="icon">-</span> Vol
+          <span class="emoji" aria-hidden="true">🔉</span> Vol
         </button>
         <button class="btn icon-btn" onclick="setMute(true)" title="Mute">
-          M
+          <span class="emoji" aria-hidden="true">🔇</span>
         </button>
         <button class="btn icon-btn" onclick="setMute(false)" title="Unmute">
-          U
+          <span class="emoji" aria-hidden="true">🔊</span>
         </button>
         <button class="btn" onclick="volumeUp()" title="Volume Up">
-          Vol <span class="icon">+</span>
+          Vol <span class="emoji" aria-hidden="true">🔊</span>
         </button>
       </section>
 
       <!-- Quick Actions -->
       <section class="actions">
         <button class="btn action-btn" onclick="powerOn()" title="Power On">
-          Power On
+          <span class="emoji" aria-hidden="true">⏻</span> Power On
         </button>
         <button
           class="btn action-btn danger"
           onclick="powerOff()"
           title="Power Off">
-          Power Off
+          <span class="emoji" aria-hidden="true">⏻</span> Power Off
         </button>
         <button
           class="btn action-btn"
           onclick="sendButton('HOME')"
           title="Home">
-          Home
+          <span class="emoji" aria-hidden="true">🏠</span> Home
         </button>
         <button
           class="btn action-btn"
           onclick="sendButton('BACK')"
           title="Back">
-          &larr; Back
+          <span class="emoji" aria-hidden="true">↩️</span> Back
         </button>
         <button
           class="btn action-btn"
@@ -297,7 +299,7 @@
           onclick="wakeStreamingDevice()"
           title="Wake streaming device (Android TV, Roku)"
           style="display: none">
-          Wake device
+          <span class="emoji" aria-hidden="true">📺</span> Wake device
         </button>
       </section>
 
@@ -307,7 +309,7 @@
           class="shortcuts-toggle"
           type="button"
           onclick="toggleShortcuts()">
-          <span class="icon">&#x2328;</span> Keyboard shortcuts
+          <span class="emoji" aria-hidden="true">⌨️</span> Keyboard shortcuts
           <span class="arrow">&#x25BC;</span>
         </button>
         <div class="shortcuts-content">

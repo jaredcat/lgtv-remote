@@ -1,4 +1,5 @@
 # Build outputs
+result
 src-tauri/target/
 src-tauri/gen/
 dist/

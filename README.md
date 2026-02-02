@@ -9,7 +9,7 @@ Control your LG webOS TV directly from your desktop.
 | Version | Platform | Description |
 |---------|----------|-------------|
 | **[KDE Plasma Widget](plasmoid/)** | KDE Plasma 6 (Linux) | Native panel widget integrated with Plasma |
-| **[Tray App](lgtv-tray-remote/)** | Windows, macOS, Linux | Cross-platform system tray application |
+| **[Tray App](tray/)** | Windows, macOS, Linux | Cross-platform system tray application |
 
 ## Features
 
@@ -22,7 +22,7 @@ Control your LG webOS TV directly from your desktop.
 ## Quick Links
 
 - **KDE Users**: See [plasmoid/README.md](plasmoid/README.md)
-- **Windows/macOS/Other Linux**: See [lgtv-tray-remote/README.md](lgtv-tray-remote/README.md)
+- **Windows/macOS/Other Linux**: See [tray/README.md](tray/README.md)
 - **Releases**: [GitHub Releases](https://github.com/jaredcat/plasmoid-lgtv-remote/releases)
 
 ## Development
@@ -34,7 +34,7 @@ Each version has its own development environment:
 cd plasmoid && nix develop
 
 # Cross-platform Tray App
-cd lgtv-tray-remote && nix develop
+cd tray && nix develop
 ```
 
 ## License

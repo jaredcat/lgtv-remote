@@ -25,6 +25,9 @@ nix develop
 
 # Install widget
 ./install.sh
+
+# Test in a window (install + run plasmawindowed)
+./dev
 ```
 
 Or add to your system configuration:
@@ -49,6 +52,8 @@ Or manually:
 kpackagetool6 -t Plasma/Applet -i ./package
 ```
 
+**After reinstalling or updating:** If the widget is already on your panel and looks unchanged, Plasma is still using the old copy in memory. Remove the widget (right‑click → Remove), then add it again from Add Widgets, or log out and back in.
+
 ## First Time Setup
 
 1. Add the widget to your panel or desktop
@@ -63,7 +68,7 @@ When the widget popup is focused:
 - **Arrow Keys**: Navigation
 - **Enter**: OK/Select
 - **Backspace/Escape**: Back
-- **= or +**: Volume Up
+- **=**: Volume Up
 - **-**: Volume Down
 
 ## Uninstall

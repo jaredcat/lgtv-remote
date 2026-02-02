@@ -36,6 +36,9 @@
 
           # For system tray
           libappindicator-gtk3
+
+          # Emoji font so UI emoji render consistently on NixOS
+          noto-fonts-color-emoji
         ];
 
         nativeBuildInputs = with pkgs; [
@@ -48,6 +51,9 @@
 
           # Tauri CLI
           cargo-tauri
+
+          # Check for outdated dependencies
+          cargo-outdated
         ];
 
         # Runtime library path for system tray
@@ -67,6 +73,7 @@
             echo "Commands:"
             echo "  cargo tauri dev    - Run in development mode"
             echo "  cargo tauri build  - Build for production"
+            echo "  cargo outdated     - Check for outdated dependencies"
             echo "  ./generate-icons.sh - Generate icon files"
             echo ""
           '';
@@ -77,7 +84,7 @@
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
-          version = "1.2.0";
+          version = "1.2.1";
 
           src = ./.;
 
@@ -144,8 +151,10 @@ EOF
               --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (buildInputs ++ runtimeLibs)}" \
               --set WEBKIT_DISABLE_COMPOSITING_MODE 1 \
               --set WEBKIT_DISABLE_DMABUF_RENDERER 1 \
+              --set TAURI_AUTOSTART_EXEC lgtv-tray-remote \
               --prefix XDG_DATA_DIRS : "/run/current-system/sw/share" \
               --prefix XDG_DATA_DIRS : "${pkgs.dejavu_fonts}/share" \
+              --prefix XDG_DATA_DIRS : "${pkgs.noto-fonts-color-emoji}/share" \
               --prefix XDG_DATA_DIRS : "${pkgs.hicolor-icon-theme}/share" \
               --prefix XDG_DATA_DIRS : "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}" \
               --prefix GIO_EXTRA_MODULES : "${pkgs.glib-networking}/lib/gio/modules"

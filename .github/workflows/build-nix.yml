@@ -2,6 +2,8 @@ name: Build Nix
 
 on:
   push:
+    branches:
+      - dev
     tags:
       - 'v*'
   workflow_dispatch:
@@ -19,6 +21,7 @@ jobs:
           nix_path: nixpkgs=channel:nixos-unstable
 
       - name: Setup Cachix
+        if: github.ref_type == 'tag'
         uses: cachix/cachix-action@v15
         with:
           name: lgtv-tray-remote
@@ -26,4 +29,4 @@ jobs:
 
       - name: Build lgtv-tray
         run: nix build .#default --print-build-logs
-        working-directory: lgtv-tray-remote
+        working-directory: tray

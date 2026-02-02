@@ -47,14 +47,14 @@ jobs:
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: './lgtv-tray-remote/src-tauri -> target'
+          workspaces: './tray/src-tauri -> target'
 
-      - name: "Update version (single source: tag → Cargo.toml, tauri.conf.json, flake.nix)"
+      - name: Update version in Tauri config
         shell: bash
         run: |
           VERSION="${{ inputs.version }}"
           VERSION="${VERSION#v}"
-          cd lgtv-tray-remote
+          cd tray
           sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
           sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i.bak "s/version = \"[^\"]*\";/version = \"$VERSION\";/" flake.nix
@@ -64,7 +64,7 @@ jobs:
         run: cargo install tauri-cli
 
       - name: Build Tauri app
-        working-directory: lgtv-tray-remote
+        working-directory: tray
         run: cargo tauri build ${{ matrix.args }}
 
       - name: Upload Linux artifacts
@@ -73,9 +73,9 @@ jobs:
         with:
           name: lgtv-tray-linux
           path: |
-            lgtv-tray-remote/src-tauri/target/release/bundle/deb/*.deb
-            lgtv-tray-remote/src-tauri/target/release/bundle/rpm/*.rpm
-            lgtv-tray-remote/src-tauri/target/release/bundle/appimage/*.AppImage
+            tray/src-tauri/target/release/bundle/deb/*.deb
+            tray/src-tauri/target/release/bundle/rpm/*.rpm
+            tray/src-tauri/target/release/bundle/appimage/*.AppImage
 
       - name: Upload Windows artifacts
         if: matrix.platform == 'windows-latest'
@@ -83,8 +83,8 @@ jobs:
         with:
           name: lgtv-tray-windows
           path: |
-            lgtv-tray-remote/src-tauri/target/release/bundle/msi/*.msi
-            lgtv-tray-remote/src-tauri/target/release/bundle/nsis/*.exe
+            tray/src-tauri/target/release/bundle/msi/*.msi
+            tray/src-tauri/target/release/bundle/nsis/*.exe
 
       - name: Upload macOS artifacts
         if: matrix.platform == 'macos-latest'
@@ -92,5 +92,5 @@ jobs:
         with:
           name: lgtv-tray-${{ matrix.name }}
           path: |
-            lgtv-tray-remote/src-tauri/target/*/release/bundle/dmg/*.dmg
-            lgtv-tray-remote/src-tauri/target/*/release/bundle/macos/*.app
+            tray/src-tauri/target/*/release/bundle/dmg/*.dmg
+            tray/src-tauri/target/*/release/bundle/macos/*.app
