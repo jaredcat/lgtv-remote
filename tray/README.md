@@ -8,6 +8,7 @@ A system tray application for controlling LG webOS TVs. Works on **Windows**, **
 
 - System tray icon with popup remote control
 - D-pad navigation (Up, Down, Left, Right, OK)
+- **Media controls** (Rewind, Play/Pause, Stop, Fast Forward)
 - Volume control (Up, Down, Mute, Unmute)
 - Power On (Wake-on-LAN) and Power Off
 - **Wake streaming device** (Android TV / NVIDIA Shield via Wake-on-LAN, or Roku via ECP)
@@ -114,7 +115,7 @@ cargo tauri build
 nix run github:jaredcat/plasmoid-lgtv-remote?ref=dev&dir=tray
 ```
 
-Or from a local checkout: 
+Or from a local checkout:
 
 ```bash
 cd tray && nix run .#default
@@ -198,15 +199,25 @@ Build outputs are in `src-tauri/target/release/bundle/`.
 
 ### Keyboard Shortcuts
 
+Default shortcuts (customizable in **Keyboard shortcuts** in the app):
+
 | Key | Action |
 | ----- | -------- |
 | Arrow keys | Navigate |
 | Enter | Select/OK |
-| Backspace/Escape | Back |
-| `+` | Volume Up |
+| Backspace | Back |
+| **Space** | Play |
+| `[` | Rewind |
+| `]` | Fast Forward |
+| `P` | Pause |
+| `S` | Stop |
+| `=` | Volume Up |
 | `-` | Volume Down |
 | Shift + `=` | Unmute |
 | Shift + `-` | Mute |
+| F7 | Power On |
+| F8 | Power Off |
+| Home | Home |
 
 ### Power On (Wake-on-LAN)
 

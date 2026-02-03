@@ -40,6 +40,11 @@ PlasmoidItem {
     property string shortcutRight: Plasmoid.configuration.shortcutRight || "Right"
     property string shortcutEnter: Plasmoid.configuration.shortcutEnter || "Return"
     property string shortcutBack: Plasmoid.configuration.shortcutBack || "Backspace"
+    property string shortcutRewind: Plasmoid.configuration.shortcutRewind || "["
+    property string shortcutPlay: Plasmoid.configuration.shortcutPlay || "Space"
+    property string shortcutPause: Plasmoid.configuration.shortcutPause || "P"
+    property string shortcutStop: Plasmoid.configuration.shortcutStop || "S"
+    property string shortcutFastForward: Plasmoid.configuration.shortcutFastForward || "]"
     property string shortcutHome: Plasmoid.configuration.shortcutHome || "Home"
     property string shortcutVolumeUp: Plasmoid.configuration.shortcutVolumeUp || "="
     property string shortcutVolumeDown: Plasmoid.configuration.shortcutVolumeDown || "-"
@@ -336,6 +341,11 @@ PlasmoidItem {
         Shortcut { sequence: root.shortcutRight; enabled: root.shortcutRight !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["RIGHT"]) }
         Shortcut { sequence: root.shortcutEnter; enabled: root.shortcutEnter !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["ENTER"]) }
         Shortcut { sequence: root.shortcutBack; enabled: root.shortcutBack !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["BACK"]) }
+        Shortcut { sequence: root.shortcutRewind; enabled: root.shortcutRewind !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["REWIND"]) }
+        Shortcut { sequence: root.shortcutPlay; enabled: root.shortcutPlay !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["PLAY"]) }
+        Shortcut { sequence: root.shortcutPause; enabled: root.shortcutPause !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["PAUSE"]) }
+        Shortcut { sequence: root.shortcutStop; enabled: root.shortcutStop !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["STOP"]) }
+        Shortcut { sequence: root.shortcutFastForward; enabled: root.shortcutFastForward !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["FASTFORWARD"]) }
         Shortcut { sequence: root.shortcutHome; enabled: root.shortcutHome !== "" && root.tvConnected; onActivated: root.sendCommand("sendButton", ["HOME"]) }
         Shortcut { sequence: root.shortcutVolumeUp; enabled: root.shortcutVolumeUp !== "" && root.tvConnected; onActivated: root.sendCommand("volumeUp") }
         Shortcut { sequence: root.shortcutVolumeDown; enabled: root.shortcutVolumeDown !== "" && root.tvConnected; onActivated: root.sendCommand("volumeDown") }
@@ -594,6 +604,54 @@ PlasmoidItem {
                 }
             }
 
+            // Media controls
+            Kirigami.Separator { Layout.fillWidth: true }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+
+                PlasmaComponents.Label {
+                    text: "Media"
+                    font.bold: true
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    PlasmaComponents.Button {
+                        icon.name: "media-skip-backward"
+                        Layout.fillWidth: true
+                        PlasmaComponents.ToolTip { text: "Rewind" }
+                        onClicked: root.sendCommand("sendButton", ["REWIND"])
+                    }
+                PlasmaComponents.Button {
+                    icon.name: "media-playback-pause"
+                    Layout.preferredWidth: 50
+                    PlasmaComponents.ToolTip { text: "Pause" }
+                    onClicked: root.sendCommand("sendButton", ["PAUSE"])
+                }
+                PlasmaComponents.Button {
+                    icon.name: "media-playback-start"
+                    Layout.preferredWidth: 50
+                    PlasmaComponents.ToolTip { text: "Play" }
+                    onClicked: root.sendCommand("sendButton", ["PLAY"])
+                }
+                PlasmaComponents.Button {
+                    icon.name: "media-playback-stop"
+                    Layout.preferredWidth: 50
+                    PlasmaComponents.ToolTip { text: "Stop" }
+                    onClicked: root.sendCommand("sendButton", ["STOP"])
+                }
+                PlasmaComponents.Button {
+                    icon.name: "media-skip-forward"
+                    Layout.fillWidth: true
+                    PlasmaComponents.ToolTip { text: "Fast Forward" }
+                    onClicked: root.sendCommand("sendButton", ["FASTFORWARD"])
+                }
+                }
+            }
+
             // Volume controls
             Kirigami.Separator { Layout.fillWidth: true }
 
@@ -730,6 +788,31 @@ PlasmoidItem {
                         Layout.fillWidth: true
                         PlasmaComponents.Label { text: "Back"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
                         PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutBack; onTextChanged: Plasmoid.configuration.shortcutBack = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Rewind"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutRewind; onTextChanged: Plasmoid.configuration.shortcutRewind = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Play"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutPlay; onTextChanged: Plasmoid.configuration.shortcutPlay = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Pause"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutPause; onTextChanged: Plasmoid.configuration.shortcutPause = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Stop"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutStop; onTextChanged: Plasmoid.configuration.shortcutStop = text }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        PlasmaComponents.Label { text: "Fast Forward"; Layout.minimumWidth: Kirigami.Units.gridUnit * 5 }
+                        PlasmaComponents.TextField { Layout.fillWidth: true; text: root.shortcutFastForward; onTextChanged: Plasmoid.configuration.shortcutFastForward = text }
                     }
                     RowLayout {
                         Layout.fillWidth: true

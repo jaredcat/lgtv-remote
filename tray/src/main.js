@@ -27,20 +27,31 @@ const ACTIONS = [
   { id: 'right', label: 'Right', defaultShortcut: 'Right' },
   { id: 'enter', label: 'OK / Enter', defaultShortcut: 'Return' },
   { id: 'back', label: 'Back', defaultShortcut: 'Backspace' },
+  { id: 'rewind', label: 'Rewind', defaultShortcut: '[' },
+  { id: 'play', label: 'Play', defaultShortcut: 'Space' },
+  { id: 'pause', label: 'Pause', defaultShortcut: 'P' },
+  { id: 'stop', label: 'Stop', defaultShortcut: 'S' },
+  { id: 'fast_forward', label: 'Fast Forward', defaultShortcut: ']' },
   { id: 'volume_up', label: 'Volume Up', defaultShortcut: '=' },
   { id: 'volume_down', label: 'Volume Down', defaultShortcut: '-' },
   { id: 'mute', label: 'Mute', defaultShortcut: 'Shift+-' },
   { id: 'unmute', label: 'Unmute', defaultShortcut: 'Shift+=' },
   { id: 'power_on', label: 'Power On', defaultShortcut: 'F7' },
   { id: 'power_off', label: 'Power Off', defaultShortcut: 'F8' },
-  { id: 'wake_streaming_device', label: 'Wake streaming device', defaultShortcut: '' },
   { id: 'home', label: 'Home', defaultShortcut: 'Home' },
+  {
+    id: 'wake_streaming_device',
+    label: 'Wake streaming device',
+    defaultShortcut: '',
+  },
 ];
 
 // ============ UI Helpers ============
 
 function hasConnectionInfo() {
-  return Boolean(config && config.active_tv && config.tvs?.[config.active_tv]?.client_key);
+  return Boolean(
+    config && config.active_tv && config.tvs?.[config.active_tv]?.client_key,
+  );
 }
 
 function setStatus(connected, text) {
@@ -81,15 +92,15 @@ function showToast(message, type = 'info') {
   // Remove existing toast
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
-  
+
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
-  
+
   // Show
   setTimeout(() => toast.classList.add('show'), 10);
-  
+
   // Hide after delay
   setTimeout(() => {
     toast.classList.remove('show');
@@ -117,12 +128,14 @@ function buttonFeedback(element) {
 // Check if error indicates we are no longer connected (single source of truth for UI)
 function isDisconnectError(error) {
   const msg = String(error).toLowerCase();
-  return msg.includes('disconnected') ||
-         msg.includes('not connected') ||
-         msg.includes('connection closed') ||
-         msg.includes('timeout') ||
-         msg.includes('send failed') ||
-         msg.includes('websocket error');
+  return (
+    msg.includes('disconnected') ||
+    msg.includes('not connected') ||
+    msg.includes('connection closed') ||
+    msg.includes('timeout') ||
+    msg.includes('send failed') ||
+    msg.includes('websocket error')
+  );
 }
 
 // Handle command errors - update status if disconnected
@@ -138,7 +151,7 @@ async function sendButton(button) {
     showToast('Not connected', 'error');
     return;
   }
-  
+
   try {
     await invoke('send_button', { button });
   } catch (e) {
@@ -151,7 +164,7 @@ async function volumeUp() {
     showToast('Not connected', 'error');
     return;
   }
-  
+
   try {
     await invoke('volume_up');
   } catch (e) {
@@ -164,7 +177,7 @@ async function volumeDown() {
     showToast('Not connected', 'error');
     return;
   }
-  
+
   try {
     await invoke('volume_down');
   } catch (e) {
@@ -177,7 +190,7 @@ async function setMute(mute) {
     showToast('Not connected', 'error');
     return;
   }
-  
+
   try {
     await invoke('set_mute', { mute });
     showToast(mute ? 'Muted' : 'Unmuted', 'success');
@@ -223,7 +236,7 @@ async function powerOff() {
     showToast('Not connected', 'error');
     return;
   }
-  
+
   try {
     await invoke('power_off');
     setStatus(false, 'TV Off');
@@ -238,7 +251,7 @@ async function fetchMac() {
     showToast('Connect to TV first', 'error');
     return;
   }
-  
+
   try {
     const result = await invoke('fetch_mac');
     showToast(result.message || 'MAC address fetched', 'success');
@@ -251,10 +264,15 @@ async function fetchMac() {
 
 function toggleStreamingDeviceFields() {
   const type = document.getElementById('streaming-device-type').value;
-  document.getElementById('streaming-device-wol-row').style.display = type === 'wol' ? '' : 'none';
-  document.getElementById('streaming-device-adb-row').style.display = type === 'adb' ? '' : 'none';
-  document.getElementById('streaming-device-roku-row').style.display = type === 'roku' ? '' : 'none';
-  const wakeOnPowerRow = document.getElementById('streaming-device-wake-on-power-row');
+  document.getElementById('streaming-device-wol-row').style.display =
+    type === 'wol' ? '' : 'none';
+  document.getElementById('streaming-device-adb-row').style.display =
+    type === 'adb' ? '' : 'none';
+  document.getElementById('streaming-device-roku-row').style.display =
+    type === 'roku' ? '' : 'none';
+  const wakeOnPowerRow = document.getElementById(
+    'streaming-device-wake-on-power-row',
+  );
   if (wakeOnPowerRow) wakeOnPowerRow.style.display = type ? '' : 'none';
   const saveRow = document.getElementById('streaming-device-save-row');
   if (saveRow) saveRow.style.display = type ? '' : 'none';
@@ -286,18 +304,28 @@ async function saveStreamingDevice() {
   if (type === 'wol') {
     const mac = document.getElementById('streaming-device-mac').value.trim();
     if (!mac) {
-      showToast('Enter the device MAC address (e.g. from router or Shield settings)', 'error');
+      showToast(
+        'Enter the device MAC address (e.g. from router or Shield settings)',
+        'error',
+      );
       return;
     }
-    const broadcast_ip = document.getElementById('streaming-device-wol-broadcast').value.trim() || null;
+    const broadcast_ip =
+      document.getElementById('streaming-device-wol-broadcast').value.trim() ||
+      null;
     device = { type: 'wol', mac, broadcast_ip };
   } else if (type === 'adb') {
     const ip = document.getElementById('streaming-device-adb-ip').value.trim();
     if (!ip) {
-      showToast('Enter the device IP address (Shield: enable Network debugging in Developer options)', 'error');
+      showToast(
+        'Enter the device IP address (Shield: enable Network debugging in Developer options)',
+        'error',
+      );
       return;
     }
-    const portStr = document.getElementById('streaming-device-adb-port').value.trim();
+    const portStr = document
+      .getElementById('streaming-device-adb-port')
+      .value.trim();
     const port = portStr ? parseInt(portStr, 10) : 5555;
     if (isNaN(port) || port < 1 || port > 65535) {
       showToast('ADB port must be 1–65535 (default 5555)', 'error');
@@ -318,7 +346,8 @@ async function saveStreamingDevice() {
       enabled: document.getElementById('wake-streaming-on-power-on').checked,
     });
     config = await invoke('get_config');
-    document.getElementById('wake-streaming-btn').style.display = config.streaming_device ? '' : 'none';
+    document.getElementById('wake-streaming-btn').style.display =
+      config.streaming_device ? '' : 'none';
     showToast('Streaming device saved', 'success');
   } catch (e) {
     showToast(e, 'error');
@@ -340,7 +369,7 @@ async function saveMac() {
     showToast('Please enter a MAC address', 'error');
     return;
   }
-  
+
   try {
     const result = await invoke('set_mac', { mac });
     showToast(result.message || 'MAC address saved', 'success');
@@ -359,12 +388,12 @@ async function quitApp() {
 
 async function connectTv() {
   setConnecting();
-  
+
   try {
     const result = await invoke('connect');
     setStatus(true, 'Connected');
     showToast('Connected to TV', 'success');
-    
+
     // Collapse settings on successful connect
     document.getElementById('settings-panel').classList.add('collapsed');
   } catch (e) {
@@ -377,23 +406,23 @@ async function authenticate() {
   const name = document.getElementById('tv-name').value.trim();
   const ip = document.getElementById('tv-ip').value.trim();
   const useSsl = document.getElementById('use-ssl').checked;
-  
+
   if (!name || !ip) {
     showToast('Please enter TV name and IP', 'error');
     return;
   }
-  
+
   setConnecting();
   document.getElementById('status-text').textContent = 'Check TV for prompt...';
-  
+
   try {
     const result = await invoke('authenticate', { name, ip, useSsl });
     setStatus(true, 'Connected');
     showToast('Authenticated! Key saved.', 'success');
-    
+
     // Reload config
     await loadConfig();
-    
+
     // Collapse settings
     document.getElementById('settings-panel').classList.add('collapsed');
   } catch (e) {
@@ -407,14 +436,14 @@ async function authenticate() {
 async function loadConfig() {
   try {
     config = await invoke('get_config');
-    
+
     // Populate fields if we have a saved TV
     if (config.active_tv && config.tvs[config.active_tv]) {
       const tv = config.tvs[config.active_tv];
       document.getElementById('tv-name').value = config.active_tv;
       document.getElementById('tv-ip').value = tv.ip || '';
       document.getElementById('use-ssl').checked = tv.use_ssl !== false;
-      
+
       // Show MAC address if saved
       const macInput = document.getElementById('mac-input');
       const macStatus = document.getElementById('mac-status');
@@ -424,7 +453,8 @@ async function loadConfig() {
         macStatus.className = 'hint success';
       } else {
         macInput.value = '';
-        macStatus.textContent = 'Not set - fetch while connected or enter manually';
+        macStatus.textContent =
+          'Not set - fetch while connected or enter manually';
         macStatus.className = 'hint warning';
       }
     }
@@ -436,11 +466,14 @@ async function loadConfig() {
       if (sd.type === 'wol') {
         typeSelect.value = 'wol';
         document.getElementById('streaming-device-mac').value = sd.mac || '';
-        document.getElementById('streaming-device-wol-broadcast').value = sd.broadcast_ip || '';
+        document.getElementById('streaming-device-wol-broadcast').value =
+          sd.broadcast_ip || '';
       } else if (sd.type === 'adb') {
         typeSelect.value = 'adb';
         document.getElementById('streaming-device-adb-ip').value = sd.ip || '';
-        document.getElementById('streaming-device-adb-port').value = sd.port ? String(sd.port) : '5555';
+        document.getElementById('streaming-device-adb-port').value = sd.port
+          ? String(sd.port)
+          : '5555';
       } else if (sd.type === 'roku') {
         typeSelect.value = 'roku';
         document.getElementById('streaming-device-ip').value = sd.ip || '';
@@ -450,11 +483,13 @@ async function loadConfig() {
     } else {
       typeSelect.value = '';
     }
-    document.getElementById('wake-streaming-on-power-on').checked = config.wake_streaming_on_power_on === true;
+    document.getElementById('wake-streaming-on-power-on').checked =
+      config.wake_streaming_on_power_on === true;
     toggleStreamingDeviceFields();
     const wakeStreamingBtn = document.getElementById('wake-streaming-btn');
-    if (wakeStreamingBtn) wakeStreamingBtn.style.display = config.streaming_device ? '' : 'none';
-    
+    if (wakeStreamingBtn)
+      wakeStreamingBtn.style.display = config.streaming_device ? '' : 'none';
+
     // Load shortcut settings
     await loadShortcutSettings();
     await loadActionShortcuts();
@@ -462,7 +497,7 @@ async function loadConfig() {
     // Load autostart and version
     await loadAutostartSettings();
     await loadVersion();
-    
+
     // Check if we should auto-connect
     if (config.active_tv && config.tvs[config.active_tv]?.client_key) {
       connectTv();
@@ -550,7 +585,10 @@ async function toggleAutostart() {
   const enabled = document.getElementById('autostart-enabled').checked;
   try {
     await invoke('set_autostart_enabled', { enabled });
-    showToast(enabled ? 'App will start with your computer' : 'Autostart disabled', 'success');
+    showToast(
+      enabled ? 'App will start with your computer' : 'Autostart disabled',
+      'success',
+    );
   } catch (e) {
     showToast(e, 'error');
     document.getElementById('autostart-enabled').checked = !enabled;
@@ -560,13 +598,13 @@ async function toggleAutostart() {
 async function toggleShortcut() {
   const enabled = document.getElementById('shortcut-enabled').checked;
   const shortcut = document.getElementById('shortcut-input').value.trim();
-  
+
   if (enabled && !shortcut) {
     showToast('Please set a shortcut first', 'error');
     document.getElementById('shortcut-enabled').checked = false;
     return;
   }
-  
+
   await saveShortcut(shortcut, enabled);
 }
 
@@ -575,7 +613,14 @@ async function saveShortcut(shortcut, enabled) {
     await invoke('set_shortcut', { shortcut, enabled });
     currentShortcut = shortcut;
     shortcutEnabled = enabled;
-    showToast(enabled && shortcut ? `Shortcut: ${shortcut}` : shortcut ? 'Shortcut disabled' : 'Shortcut cleared', 'success');
+    showToast(
+      enabled && shortcut
+        ? `Shortcut: ${shortcut}`
+        : shortcut
+          ? 'Shortcut disabled'
+          : 'Shortcut cleared',
+      'success',
+    );
   } catch (e) {
     showToast(e, 'error');
     // Revert UI on error
@@ -596,7 +641,7 @@ function clearGlobalShortcut() {
 function setupShortcutRecorder() {
   const input = document.getElementById('shortcut-input');
   const hint = document.getElementById('shortcut-hint');
-  
+
   input.addEventListener('focus', () => {
     isRecordingShortcut = true;
     recordedKeys.clear();
@@ -605,13 +650,13 @@ function setupShortcutRecorder() {
     hint.textContent = 'Press key combination...';
     input.value = '';
   });
-  
+
   input.addEventListener('blur', async () => {
     isRecordingShortcut = false;
     input.classList.remove('recording');
     hint.classList.remove('recording');
     hint.textContent = 'Click to record shortcut';
-    
+
     const newShortcut = input.value.trim();
     if (newShortcut && newShortcut !== currentShortcut) {
       // Save the new shortcut
@@ -621,16 +666,16 @@ function setupShortcutRecorder() {
       // Restore previous shortcut if nothing recorded
       input.value = currentShortcut;
     }
-    
+
     recordedKeys.clear();
   });
-  
+
   input.addEventListener('keydown', (e) => {
     if (!isRecordingShortcut) return;
-    
+
     e.preventDefault();
     e.stopPropagation();
-    
+
     // Record only the current combination (modifiers + this key), not accumulated keys
     const key = mapKeyToTauri(e);
     if (key) {
@@ -638,7 +683,7 @@ function setupShortcutRecorder() {
       updateShortcutDisplay(input);
     }
   });
-  
+
   input.addEventListener('keyup', (e) => {
     if (!isRecordingShortcut) return;
     e.preventDefault();
@@ -652,33 +697,45 @@ function mapKeyToTauri(e) {
   if (e.key === 'Alt') return 'Alt';
   if (e.key === 'Shift') return 'Shift';
   if (e.key === 'Meta' || e.key === 'Super') return 'Super';
-  
+
+  // Space (e.key is ' ') — must be before regular keys
+  if (e.key === ' ') return 'Space';
+
   // Regular keys
   if (e.key.length === 1) {
     return e.key.toUpperCase();
   }
-  
+
   // Special keys
   const specialKeys = {
-    'ArrowUp': 'Up',
-    'ArrowDown': 'Down',
-    'ArrowLeft': 'Left',
-    'ArrowRight': 'Right',
-    'Enter': 'Return',
-    'Escape': 'Escape',
-    'Tab': 'Tab',
-    'Backspace': 'Backspace',
-    'Delete': 'Delete',
-    'Home': 'Home',
-    'End': 'End',
-    'PageUp': 'PageUp',
-    'PageDown': 'PageDown',
-    'Insert': 'Insert',
-    'F1': 'F1', 'F2': 'F2', 'F3': 'F3', 'F4': 'F4',
-    'F5': 'F5', 'F6': 'F6', 'F7': 'F7', 'F8': 'F8',
-    'F9': 'F9', 'F10': 'F10', 'F11': 'F11', 'F12': 'F12',
+    ArrowUp: 'Up',
+    ArrowDown: 'Down',
+    ArrowLeft: 'Left',
+    ArrowRight: 'Right',
+    Enter: 'Return',
+    Escape: 'Escape',
+    Tab: 'Tab',
+    Backspace: 'Backspace',
+    Delete: 'Delete',
+    Home: 'Home',
+    End: 'End',
+    PageUp: 'PageUp',
+    PageDown: 'PageDown',
+    Insert: 'Insert',
+    F1: 'F1',
+    F2: 'F2',
+    F3: 'F3',
+    F4: 'F4',
+    F5: 'F5',
+    F6: 'F6',
+    F7: 'F7',
+    F8: 'F8',
+    F9: 'F9',
+    F10: 'F10',
+    F11: 'F11',
+    F12: 'F12',
   };
-  
+
   return specialKeys[e.key] || null;
 }
 
@@ -756,8 +813,8 @@ async function loadActionShortcuts() {
     for (const a of ACTIONS) {
       const c = loaded[a.id];
       actionShortcuts[a.id] = {
-        shortcut: (c && c.shortcut != null) ? c.shortcut : a.defaultShortcut,
-        global: (c && c.global != null) ? c.global : false,
+        shortcut: c && c.shortcut != null ? c.shortcut : a.defaultShortcut,
+        global: c && c.global != null ? c.global : false,
       };
     }
     buildShortcutToActionMap();
@@ -772,14 +829,17 @@ function renderShortcutsList() {
   const list = document.getElementById('shortcuts-list');
   list.innerHTML = '';
   for (const a of ACTIONS) {
-    const ac = actionShortcuts[a.id] || { shortcut: a.defaultShortcut, global: false };
+    const ac = actionShortcuts[a.id] || {
+      shortcut: a.defaultShortcut,
+      global: false,
+    };
     const row = document.createElement('div');
     row.className = 'shortcut-row';
     row.dataset.actionId = a.id;
     row.innerHTML = `
       <label class="shortcut-label">${escapeHtml(a.label)}</label>
       <input type="text" class="shortcut-input-action" data-action-id="${escapeHtml(a.id)}" value="${escapeHtml(ac.shortcut)}" placeholder="Click and press keys..." readonly>
-      <button type="button" class="btn-clear-shortcut" data-action-id="${escapeHtml(a.id)}" title="Clear shortcut; double-click to reset to default" aria-label="Clear shortcut; double-click to reset to default">&times;</button>
+      <button type="button" class="btn-clear-shortcut" data-action-id="${escapeHtml(a.id)}" title="Clear shortcut; click when empty to reset to default" aria-label="Clear shortcut; click when empty to reset to default">&times;</button>
       <label class="shortcut-global-label">
         <input type="checkbox" class="shortcut-global-cb" data-action-id="${escapeHtml(a.id)}" ${ac.global ? 'checked' : ''}>
         Global
@@ -787,44 +847,33 @@ function renderShortcutsList() {
     `;
     list.appendChild(row);
   }
-  list.querySelectorAll('.shortcut-global-cb').forEach(cb => {
+  list.querySelectorAll('.shortcut-global-cb').forEach((cb) => {
     cb.addEventListener('change', onActionGlobalChange);
   });
-  list.querySelectorAll('.btn-clear-shortcut').forEach(btn => {
+  list.querySelectorAll('.btn-clear-shortcut').forEach((btn) => {
     btn.addEventListener('click', (e) => {
-      if (e.detail === 2) return; // let dblclick handle reset to default
       const id = e.target.dataset.actionId;
       if (!id || !actionShortcuts[id]) return;
-      actionShortcuts[id].shortcut = '';
-      actionShortcuts[id].global = false;
       const row = e.target.closest('.shortcut-row');
-      if (row) {
-        const input = row.querySelector('.shortcut-input-action');
-        const cb = row.querySelector('.shortcut-global-cb');
+      const input = row?.querySelector('.shortcut-input-action');
+      const cb = row?.querySelector('.shortcut-global-cb');
+      const isEmpty = !input?.value?.trim();
+      if (isEmpty) {
+        const action = ACTIONS.find((a) => a.id === id);
+        const defaultShortcut = action ? action.defaultShortcut : '';
+        actionShortcuts[id].shortcut = defaultShortcut;
+        actionShortcuts[id].global = false;
+        if (input) input.value = defaultShortcut;
+        if (cb) cb.checked = false;
+        showToast('Reset to default', 'success');
+      } else {
+        actionShortcuts[id].shortcut = '';
+        actionShortcuts[id].global = false;
         if (input) input.value = '';
         if (cb) cb.checked = false;
       }
       buildShortcutToActionMap();
       saveActionShortcuts();
-    });
-    btn.addEventListener('dblclick', (e) => {
-      e.preventDefault();
-      const id = e.target.dataset.actionId;
-      if (!id || !actionShortcuts[id]) return;
-      const action = ACTIONS.find(a => a.id === id);
-      const defaultShortcut = action ? action.defaultShortcut : '';
-      actionShortcuts[id].shortcut = defaultShortcut;
-      actionShortcuts[id].global = false;
-      const row = e.target.closest('.shortcut-row');
-      if (row) {
-        const input = row.querySelector('.shortcut-input-action');
-        const cb = row.querySelector('.shortcut-global-cb');
-        if (input) input.value = defaultShortcut;
-        if (cb) cb.checked = false;
-      }
-      buildShortcutToActionMap();
-      saveActionShortcuts();
-      showToast('Reset to default', 'success');
     });
   });
 }
@@ -846,7 +895,7 @@ function onActionGlobalChange(e) {
 }
 
 function collectActionShortcutsFromDOM() {
-  document.querySelectorAll('.shortcut-row').forEach(row => {
+  document.querySelectorAll('.shortcut-row').forEach((row) => {
     const id = row.dataset.actionId;
     const input = row.querySelector('.shortcut-input-action');
     const cb = row.querySelector('.shortcut-global-cb');
@@ -869,7 +918,7 @@ async function saveActionShortcuts() {
 }
 
 function setupActionShortcutRecorders() {
-  document.querySelectorAll('.shortcut-input-action').forEach(input => {
+  document.querySelectorAll('.shortcut-input-action').forEach((input) => {
     const actionId = input.dataset.actionId;
     input.addEventListener('focus', () => {
       isRecordingActionShortcut = actionId;
@@ -886,8 +935,8 @@ function setupActionShortcutRecorders() {
         buildShortcutToActionMap();
         await saveActionShortcuts();
       }
-      if (!newShortcut && ACTIONS.find(a => a.id === actionId)) {
-        input.value = ACTIONS.find(a => a.id === actionId).defaultShortcut;
+      if (!newShortcut && ACTIONS.find((a) => a.id === actionId)) {
+        input.value = ACTIONS.find((a) => a.id === actionId).defaultShortcut;
         if (actionShortcuts[actionId]) {
           actionShortcuts[actionId].shortcut = input.value;
           await saveActionShortcuts();
@@ -917,28 +966,58 @@ function setupActionShortcutRecorders() {
 
 async function runAction(actionId) {
   switch (actionId) {
-    case 'up': return sendButton('UP');
-    case 'down': return sendButton('DOWN');
-    case 'left': return sendButton('LEFT');
-    case 'right': return sendButton('RIGHT');
-    case 'enter': return sendButton('ENTER');
-    case 'back': return sendButton('BACK');
-    case 'volume_up': return volumeUp();
-    case 'volume_down': return volumeDown();
-    case 'mute': return setMute(true);
-    case 'unmute': return setMute(false);
-    case 'power_on': return powerOn();
-    case 'power_off': return powerOff();
-    case 'wake_streaming_device': return wakeStreamingDevice();
-    case 'home': return sendButton('HOME');
-    default: return Promise.resolve();
+    case 'up':
+      return sendButton('UP');
+    case 'down':
+      return sendButton('DOWN');
+    case 'left':
+      return sendButton('LEFT');
+    case 'right':
+      return sendButton('RIGHT');
+    case 'enter':
+      return sendButton('ENTER');
+    case 'back':
+      return sendButton('BACK');
+    case 'play':
+      return sendButton('PLAY');
+    case 'pause':
+      return sendButton('PAUSE');
+    case 'stop':
+      return sendButton('STOP');
+    case 'fast_forward':
+      return sendButton('FAST_FORWARD');
+    case 'rewind':
+      return sendButton('REWIND');
+    case 'volume_up':
+      return volumeUp();
+    case 'volume_down':
+      return volumeDown();
+    case 'mute':
+      return setMute(true);
+    case 'unmute':
+      return setMute(false);
+    case 'power_on':
+      return powerOn();
+    case 'power_off':
+      return powerOff();
+    case 'wake_streaming_device':
+      return wakeStreamingDevice();
+    case 'home':
+      return sendButton('HOME');
+    default:
+      return Promise.resolve();
   }
 }
 
 // ============ Keyboard Shortcuts ============
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || isRecordingShortcut || isRecordingActionShortcut) return;
+  if (
+    e.target.tagName === 'INPUT' ||
+    isRecordingShortcut ||
+    isRecordingActionShortcut
+  )
+    return;
 
   const shortcutStr = eventToShortcutString(e);
   const actionId = shortcutToAction[shortcutStr];
@@ -1020,7 +1099,10 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden' && devWindowSizeInterval) {
       clearInterval(devWindowSizeInterval);
       devWindowSizeInterval = null;
-    } else if (document.visibilityState === 'visible' && !devWindowSizeInterval) {
+    } else if (
+      document.visibilityState === 'visible' &&
+      !devWindowSizeInterval
+    ) {
       startDevWindowSize();
     }
   }

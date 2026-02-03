@@ -53,11 +53,9 @@
           </div>
           <div class="button-row">
             <button class="btn secondary" onclick="authenticate()">
-              <span class="emoji" aria-hidden="true">🔐</span> Authenticate
+              Authenticate
             </button>
-            <button class="btn primary" onclick="connectTv()">
-              <span class="emoji" aria-hidden="true">🔗</span> Connect
-            </button>
+            <button class="btn primary" onclick="connectTv()">Connect</button>
           </div>
 
           <div class="settings-divider"></div>
@@ -252,6 +250,32 @@
           </button>
           <div></div>
         </div>
+      </section>
+      <section class="media-controls">
+        <button
+          class="btn dpad-rewind"
+          onclick="sendButton('REWIND')"
+          title="Rewind">
+          <span class="emoji" aria-hidden="true">⏪</span>
+        </button>
+        <button
+          class="btn dpad-pause"
+          onclick="sendButton('PAUSE')"
+          title="Pause">
+          <span class="emoji" aria-hidden="true">⏸️</span>
+        </button>
+        <button class="btn dpad-play" onclick="sendButton('PLAY')" title="Play">
+          <span class="emoji" aria-hidden="true">⏯️</span>
+        </button>
+        <button class="btn dpad-stop" onclick="sendButton('STOP')" title="Stop">
+          <span class="emoji" aria-hidden="true">⏹️</span>
+        </button>
+        <button
+          class="btn dpad-fast-forward"
+          onclick="sendButton('FAST_FORWARD')"
+          title="Fast Forward">
+          <span class="emoji" aria-hidden="true">⏩</span>
+        </button>
       </section>
 
       <!-- Volume Controls -->

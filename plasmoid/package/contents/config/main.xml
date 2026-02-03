@@ -90,6 +90,31 @@
             <default>Backspace</default>
             <label>Shortcut: Back</label>
         </entry>
+        <entry name="shortcutRewind"
+               type="String">
+            <default>[</default>
+            <label>Shortcut: Rewind</label>
+        </entry>
+        <entry name="shortcutPlay"
+               type="String">
+            <default>Space</default>
+            <label>Shortcut: Play</label>
+        </entry>
+        <entry name="shortcutPause"
+               type="String">
+            <default>P</default>
+            <label>Shortcut: Pause</label>
+        </entry>
+        <entry name="shortcutStop"
+               type="String">
+            <default>S</default>
+            <label>Shortcut: Stop</label>
+        </entry>
+        <entry name="shortcutFastForward"
+               type="String">
+            <default>]</default>
+            <label>Shortcut: Fast Forward</label>
+        </entry>
         <entry name="shortcutHome"
                type="String">
             <default>Home</default>

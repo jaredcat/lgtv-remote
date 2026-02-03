@@ -27,7 +27,9 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, 'Noto Sans', 'DejaVu Sans', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+    'Noto Sans', 'DejaVu Sans', sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   user-select: none;
@@ -36,7 +38,9 @@ body {
 
 /* Emoji: use system emoji font and fixed size so layout doesn't break (e.g. on NixOS) */
 .emoji {
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Noto Emoji", "Twemoji Mozilla", sans-serif;
+  font-family:
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Noto Emoji',
+    'Twemoji Mozilla', sans-serif;
   display: inline-block;
   width: 1.15em;
   text-align: center;
@@ -115,6 +119,7 @@ header h1 {
   gap: 8px;
   font-size: 13px;
   color: var(--text-secondary);
+  min-height: 36px;
 }
 
 .btn-status-connect {
@@ -145,8 +150,13 @@ header h1 {
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* Settings Panel */
@@ -188,7 +198,9 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  transition: max-height 0.3s ease, padding 0.3s ease;
+  transition:
+    max-height 0.3s ease,
+    padding 0.3s ease;
 }
 
 .settings.collapsed .settings-content {
@@ -209,7 +221,7 @@ header h1 {
   color: var(--text-secondary);
 }
 
-.field input[type="text"] {
+.field input[type='text'] {
   padding: 10px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--bg-tertiary);
@@ -220,7 +232,7 @@ header h1 {
   transition: border-color var(--transition);
 }
 
-.field input[type="text"]:focus {
+.field input[type='text']:focus {
   border-color: var(--accent);
 }
 
@@ -238,7 +250,7 @@ header h1 {
   cursor: pointer;
 }
 
-.field.checkbox input[type="checkbox"] {
+.field.checkbox input[type='checkbox'] {
   width: 16px;
   height: 16px;
   accent-color: var(--accent);
@@ -295,7 +307,9 @@ header h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--transition), color var(--transition);
+  transition:
+    background var(--transition),
+    color var(--transition);
 }
 
 .btn-clear-shortcut:hover {
@@ -318,8 +332,13 @@ header h1 {
 }
 
 @keyframes recording-pulse {
-  0%, 100% { border-color: var(--accent); }
-  50% { border-color: var(--accent-hover); }
+  0%,
+  100% {
+    border-color: var(--accent);
+  }
+  50% {
+    border-color: var(--accent-hover);
+  }
 }
 
 .shortcut-field .hint,
@@ -460,6 +479,15 @@ header h1 {
   padding: 0;
 }
 
+.media-controls {
+  display: grid;
+  grid-template-columns: repeat(5, 48px);
+  gap: 4px;
+  margin-top: 4px;
+  justify-content: center;
+  padding: 4px 0;
+}
+
 .ok-btn {
   background: var(--accent);
   font-weight: 600;
@@ -537,7 +565,9 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: max-height 0.3s ease, padding 0.3s ease;
+  transition:
+    max-height 0.3s ease,
+    padding 0.3s ease;
 }
 
 .shortcuts-panel.collapsed .shortcuts-content {

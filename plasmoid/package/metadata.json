@@ -1,19 +1,19 @@
 {
-    "KPackageStructure": "Plasma/Applet",
-    "KPlugin": {
-        "Id": "com.codekitties.lgtv.remote",
-        "Name": "LG TV Remote",
-        "Description": "Control your LG webOS TV from your desktop",
-        "Icon": "video-television",
-        "Category": "Utilities",
-        "Version": "2.0",
-        "Authors": [
-            {
-                "Name": "Jaredcat"
-            }
-        ],
-        "License": "MIT",
-        "Website": "https://github.com/jaredcat/plasmoid-lgtv-remote"
-    },
-    "X-Plasma-API-Minimum-Version": "6.0"
+  "KPackageStructure": "Plasma/Applet",
+  "KPlugin": {
+    "Id": "com.codekitties.lgtv.remote",
+    "Name": "LG TV Remote",
+    "Description": "Control your LG webOS TV from your desktop",
+    "Icon": "video-television",
+    "Category": "Utilities",
+    "Version": "2.1.0",
+    "Authors": [
+      {
+        "Name": "Jaredcat"
+      }
+    ],
+    "License": "MIT",
+    "Website": "https://github.com/jaredcat/plasmoid-lgtv-remote"
+  },
+  "X-Plasma-API-Minimum-Version": "6.0"
 }
