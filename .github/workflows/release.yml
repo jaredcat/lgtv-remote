@@ -64,7 +64,7 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.plasmoid" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.plasmoid" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
           ls -la release/
 
       - name: Generate latest.json and collect updater artifacts
@@ -76,75 +76,72 @@ jobs:
           REPO="jaredcat/plasmoid-lgtv-remote"
           TAG="${{ needs.prepare.outputs.version }}"
 
-          # Helper: find a single file by glob pattern within a directory, space-safe
+          # Find a single file by glob pattern within a directory (space-safe)
           find_one() {
             find "$1" -name "$2" -type f -print0 2>/dev/null | head -z -n1 | tr -d '\0'
           }
 
-          # Helper: read signature content from a .sig file path
-          sig_of() {
-            local sig_file="${1}.sig"
-            if [ -f "$sig_file" ]; then
-              cat "$sig_file"
-            fi
+          # GitHub Releases replaces spaces with dots in asset filenames.
+          # Sanitize to match and avoid 404s.
+          sanitize() {
+            echo "$1" | tr ' ' '.'
           }
 
-          # Helper: URL-encode spaces in filename for GitHub release URLs
-          url_encode() {
-            echo "$1" | sed 's/ /%20/g'
-          }
-
-          # Build platform entries using jq for proper JSON construction
           PLATFORMS='{}'
 
+          # add_platform KEY ARTIFACT_DIR GLOB [RENAME]
+          # RENAME is optional; use it to disambiguate files that share a name (e.g. macOS arch)
           add_platform() {
-            local key="$1" dir="$2" pattern="$3"
-            local file sig name url
+            local key="$1" dir="$2" pattern="$3" rename="$4"
+            local file sig_file sig name
+
             file=$(find_one "$dir" "$pattern")
             if [ -z "$file" ]; then
-              echo "WARN: no $pattern found in $dir"
+              echo "SKIP $key: no $pattern in $dir"
               return
             fi
-            sig=$(sig_of "$file")
-            if [ -z "$sig" ]; then
-              echo "WARN: no signature for $file"
+
+            sig_file="${file}.sig"
+            if [ ! -f "$sig_file" ]; then
+              echo "SKIP $key: no signature for $(basename "$file")"
               return
             fi
-            name=$(basename "$file")
-            url="https://github.com/$REPO/releases/download/$TAG/$(url_encode "$name")"
-            PLATFORMS=$(echo "$PLATFORMS" | python3 -c "
-          import sys, json
+            sig=$(cat "$sig_file")
+
+            # Determine the release asset filename
+            if [ -n "$rename" ]; then
+              name="$rename"
+            else
+              name=$(sanitize "$(basename "$file")")
+            fi
+
+            # Copy artifact + sig to release/ under the sanitized/renamed name
+            cp "$file" "release/$name"
+            cp "$sig_file" "release/${name}.sig"
+
+            local url="https://github.com/$REPO/releases/download/$TAG/$name"
+            PLATFORMS=$(python3 -c "
+          import json, sys
           d = json.load(sys.stdin)
-          d['$key'] = {'url': '''$url''', 'signature': '''$sig'''}
+          d[sys.argv[1]] = {'url': sys.argv[2], 'signature': sys.argv[3]}
           json.dump(d, sys.stdout)
-          ")
-            # Copy updater artifact + signature to release/
-            cp "$file" release/
-            cp "${file}.sig" release/
+          " "$key" "$url" "$sig" <<< "$PLATFORMS")
             echo "OK: $key -> $name"
           }
 
-          add_platform "linux-x86_64"    "artifacts/lgtv-tray-linux"       "*.AppImage"
-          add_platform "windows-x86_64"  "artifacts/lgtv-tray-windows"     "*.nsis.zip"
-          add_platform "darwin-aarch64"   "artifacts/lgtv-tray-macos-arm64" "*.app.tar.gz"
-          add_platform "darwin-x86_64"    "artifacts/lgtv-tray-macos-x64"  "*.app.tar.gz"
+          add_platform "linux-x86_64"   "artifacts/lgtv-tray-linux"       "*.AppImage"
+          add_platform "windows-x86_64" "artifacts/lgtv-tray-windows"     "*.nsis.zip"
+          add_platform "darwin-aarch64"  "artifacts/lgtv-tray-macos-arm64" "*.app.tar.gz" "LG.TV.Remote_${VERSION}_aarch64.app.tar.gz"
+          add_platform "darwin-x86_64"   "artifacts/lgtv-tray-macos-x64"  "*.app.tar.gz" "LG.TV.Remote_${VERSION}_x86_64.app.tar.gz"
 
           python3 -c "
           import json, sys
-          platforms = json.loads('''$PLATFORMS''')
-          manifest = {
-            'version': '$VERSION',
-            'pub_date': '$PUB_DATE',
-            'platforms': platforms
-          }
+          platforms = json.load(sys.stdin)
+          manifest = {'version': sys.argv[1], 'pub_date': sys.argv[2], 'platforms': platforms}
           with open('release/latest.json', 'w') as f:
             json.dump(manifest, f, indent=2)
           print(json.dumps(manifest, indent=2))
-          "
-
-          echo ""
-          echo "=== release/ contents ==="
-          ls -la release/
+          " "$VERSION" "$PUB_DATE" <<< "$PLATFORMS"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -158,7 +155,7 @@ jobs:
             ### Downloads
 
             **Cross-Platform Tray App** (Windows, macOS, Linux):
-            - **Windows**: `.msi` (installer) or `.exe` (portable)
+            - **Windows**: `.exe` (installer)
             - **macOS**: `.dmg` (Intel: x64, Apple Silicon: arm64)
             - **Linux**: `.AppImage` (universal), `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL)
 
