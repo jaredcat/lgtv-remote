@@ -84,11 +84,6 @@ jobs:
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/appimage/*.AppImage.sig
 
-      - name: List Windows bundle contents
-        if: matrix.platform == 'windows-latest'
-        shell: bash
-        run: find src-tauri/target/release/bundle -type f | sort
-
       - name: Upload Windows artifacts
         if: matrix.platform == 'windows-latest'
         uses: actions/upload-artifact@v4

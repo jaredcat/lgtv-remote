@@ -61,11 +61,15 @@ jobs:
         with:
           path: artifacts
 
-      - name: Flatten artifacts
+      - name: Collect distributable artifacts
+        shell: bash
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.plasmoid" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
-          ls -la release/
+          # Only copy files NOT handled by add_platform (which handles .AppImage, .exe, .app.tar.gz + their .sig files)
+          find artifacts -type f \( -name "*.plasmoid" -o -name "*.deb" -o -name "*.rpm" -o -name "*.dmg" \) -print0 | while IFS= read -r -d '' file; do
+            name=$(basename "$file" | tr ' ' '.')
+            cp "$file" "release/$name"
+          done
 
       - name: Generate latest.json and collect updater artifacts
         shell: bash
@@ -130,7 +134,7 @@ jobs:
           }
 
           add_platform "linux-x86_64"   "artifacts/lgtv-tray-linux"       "*.AppImage"
-          add_platform "windows-x86_64" "artifacts/lgtv-tray-windows"     "*.nsis.zip"
+          add_platform "windows-x86_64" "artifacts/lgtv-tray-windows"     "*-setup.exe"
           add_platform "darwin-aarch64"  "artifacts/lgtv-tray-macos-arm64" "*.app.tar.gz" "LG.TV.Remote_${VERSION}_aarch64.app.tar.gz"
           add_platform "darwin-x86_64"   "artifacts/lgtv-tray-macos-x64"  "*.app.tar.gz" "LG.TV.Remote_${VERSION}_x86_64.app.tar.gz"
 
@@ -143,8 +147,24 @@ jobs:
           print(json.dumps(manifest, indent=2))
           " "$VERSION" "$PUB_DATE" <<< "$PLATFORMS"
 
+      - name: Delete existing release if re-running
+        run: |
+          TAG="${{ needs.prepare.outputs.version }}"
+          RELEASE_ID=$(curl -sf \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/$TAG" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('id',''))" 2>/dev/null) || true
+          if [ -n "$RELEASE_ID" ]; then
+            curl -sf -X DELETE \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID" || true
+            echo "Deleted existing release $RELEASE_ID for $TAG"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
           files: release/*
