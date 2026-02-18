@@ -143,8 +143,14 @@ jobs:
           print(json.dumps(manifest, indent=2))
           " "$VERSION" "$PUB_DATE" <<< "$PLATFORMS"
 
+      - name: Delete existing release if re-running
+        run: gh release delete "${{ needs.prepare.outputs.version }}" --yes 2>/dev/null || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare.outputs.version }}
           files: release/*
