@@ -67,7 +67,7 @@ jobs:
           find artifacts -type f \( -name "*.plasmoid" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
           ls -la release/
 
-      - name: Generate latest.json for updater
+      - name: Generate latest.json and collect updater artifacts
         shell: bash
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
@@ -76,102 +76,74 @@ jobs:
           REPO="jaredcat/plasmoid-lgtv-remote"
           TAG="${{ needs.prepare.outputs.version }}"
 
-          # Read signatures from .sig files
-          read_sig() {
-            local pattern="$1"
-            local sig_file
-            sig_file=$(find artifacts -name "$pattern" -type f | head -1)
-            if [ -n "$sig_file" ] && [ -f "$sig_file" ]; then
+          # Helper: find a single file by glob pattern within a directory, space-safe
+          find_one() {
+            find "$1" -name "$2" -type f -print0 2>/dev/null | head -z -n1 | tr -d '\0'
+          }
+
+          # Helper: read signature content from a .sig file path
+          sig_of() {
+            local sig_file="${1}.sig"
+            if [ -f "$sig_file" ]; then
               cat "$sig_file"
-            else
-              echo ""
             fi
           }
 
-          # Find updater artifact filenames
-          find_artifact() {
-            local pattern="$1"
-            local artifact
-            artifact=$(find artifacts -name "$pattern" -type f | head -1)
-            if [ -n "$artifact" ]; then
-              basename "$artifact"
-            else
-              echo ""
+          # Helper: URL-encode spaces in filename for GitHub release URLs
+          url_encode() {
+            echo "$1" | sed 's/ /%20/g'
+          }
+
+          # Build platform entries using jq for proper JSON construction
+          PLATFORMS='{}'
+
+          add_platform() {
+            local key="$1" dir="$2" pattern="$3"
+            local file sig name url
+            file=$(find_one "$dir" "$pattern")
+            if [ -z "$file" ]; then
+              echo "WARN: no $pattern found in $dir"
+              return
             fi
+            sig=$(sig_of "$file")
+            if [ -z "$sig" ]; then
+              echo "WARN: no signature for $file"
+              return
+            fi
+            name=$(basename "$file")
+            url="https://github.com/$REPO/releases/download/$TAG/$(url_encode "$name")"
+            PLATFORMS=$(echo "$PLATFORMS" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          d['$key'] = {'url': '''$url''', 'signature': '''$sig'''}
+          json.dump(d, sys.stdout)
+          ")
+            # Copy updater artifact + signature to release/
+            cp "$file" release/
+            cp "${file}.sig" release/
+            echo "OK: $key -> $name"
           }
 
-          # Linux AppImage
-          LINUX_SIG=$(read_sig "*.AppImage.sig")
-          LINUX_FILE=$(find_artifact "*.AppImage")
+          add_platform "linux-x86_64"    "artifacts/lgtv-tray-linux"       "*.AppImage"
+          add_platform "windows-x86_64"  "artifacts/lgtv-tray-windows"     "*.nsis.zip"
+          add_platform "darwin-aarch64"   "artifacts/lgtv-tray-macos-arm64" "*.app.tar.gz"
+          add_platform "darwin-x86_64"    "artifacts/lgtv-tray-macos-x64"  "*.app.tar.gz"
 
-          # Windows NSIS
-          WINDOWS_SIG=$(read_sig "*.nsis.zip.sig")
-          WINDOWS_FILE=$(find_artifact "*.nsis.zip")
-
-          # macOS arm64
-          MACOS_ARM_SIG=$(read_sig "*.app.tar.gz.sig")
-          MACOS_ARM_FILE=""
-          # Find arm64 tar.gz specifically
-          for f in $(find artifacts/lgtv-tray-macos-arm64 -name "*.app.tar.gz" -type f 2>/dev/null); do
-            MACOS_ARM_FILE=$(basename "$f")
-            MACOS_ARM_SIG=$(cat "${f}.sig" 2>/dev/null || echo "")
-            break
-          done
-
-          # macOS x64
-          MACOS_X64_SIG=""
-          MACOS_X64_FILE=""
-          for f in $(find artifacts/lgtv-tray-macos-x64 -name "*.app.tar.gz" -type f 2>/dev/null); do
-            MACOS_X64_FILE=$(basename "$f")
-            MACOS_X64_SIG=$(cat "${f}.sig" 2>/dev/null || echo "")
-            break
-          done
-
-          # Build JSON (only include platforms with both file and signature)
-          PLATFORMS="{"
-          FIRST=true
-
-          if [ -n "$LINUX_FILE" ] && [ -n "$LINUX_SIG" ]; then
-            PLATFORMS="$PLATFORMS\"linux-x86_64\":{\"url\":\"https://github.com/$REPO/releases/download/$TAG/$LINUX_FILE\",\"signature\":\"$LINUX_SIG\"}"
-            FIRST=false
-          fi
-
-          if [ -n "$WINDOWS_FILE" ] && [ -n "$WINDOWS_SIG" ]; then
-            [ "$FIRST" = false ] && PLATFORMS="$PLATFORMS,"
-            PLATFORMS="$PLATFORMS\"windows-x86_64\":{\"url\":\"https://github.com/$REPO/releases/download/$TAG/$WINDOWS_FILE\",\"signature\":\"$WINDOWS_SIG\"}"
-            FIRST=false
-          fi
-
-          if [ -n "$MACOS_ARM_FILE" ] && [ -n "$MACOS_ARM_SIG" ]; then
-            [ "$FIRST" = false ] && PLATFORMS="$PLATFORMS,"
-            PLATFORMS="$PLATFORMS\"darwin-aarch64\":{\"url\":\"https://github.com/$REPO/releases/download/$TAG/$MACOS_ARM_FILE\",\"signature\":\"$MACOS_ARM_SIG\"}"
-            FIRST=false
-          fi
-
-          if [ -n "$MACOS_X64_FILE" ] && [ -n "$MACOS_X64_SIG" ]; then
-            [ "$FIRST" = false ] && PLATFORMS="$PLATFORMS,"
-            PLATFORMS="$PLATFORMS\"darwin-x86_64\":{\"url\":\"https://github.com/$REPO/releases/download/$TAG/$MACOS_X64_FILE\",\"signature\":\"$MACOS_X64_SIG\"}"
-          fi
-
-          PLATFORMS="$PLATFORMS}"
-
-          cat > release/latest.json <<EOF
-          {
-            "version": "$VERSION",
-            "pub_date": "$PUB_DATE",
-            "platforms": $PLATFORMS
+          python3 -c "
+          import json, sys
+          platforms = json.loads('''$PLATFORMS''')
+          manifest = {
+            'version': '$VERSION',
+            'pub_date': '$PUB_DATE',
+            'platforms': platforms
           }
-          EOF
+          with open('release/latest.json', 'w') as f:
+            json.dump(manifest, f, indent=2)
+          print(json.dumps(manifest, indent=2))
+          "
 
-          # Strip leading whitespace from heredoc indentation
-          sed -i 's/^          //' release/latest.json
-
-          # Pretty-print for verification
-          cat release/latest.json | python3 -m json.tool || cat release/latest.json
-
-      - name: Copy updater artifacts to release
-        run: |
-          find artifacts -type f \( -name "*.AppImage.sig" -o -name "*.nsis.zip" -o -name "*.nsis.zip.sig" -o -name "*.app.tar.gz" -o -name "*.app.tar.gz.sig" \) -exec cp {} release/ \;
+          echo ""
+          echo "=== release/ contents ==="
           ls -la release/
 
       - name: Create Release
