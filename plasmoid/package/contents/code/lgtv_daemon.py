@@ -51,7 +51,7 @@ def save_config(config):
 
 class TVConnection:
     """Maintains persistent connection to a TV."""
-    
+
     HANDSHAKE = {
         "type": "register",
         "id": "register_0",
@@ -63,10 +63,10 @@ class TVConnection:
                 "appVersion": "1.1",
                 "signed": {
                     "created": "20140509",
-                    "appId": "com.lge.test",
-                    "vendorId": "com.lge",
-                    "localizedAppNames": {"": "LG Remote"},
-                    "localizedVendorNames": {"": "LG Electronics"},
+                    "appId": "com.codekitties.lgtv.remote",
+                    "vendorId": "com.codekitties",
+                    "localizedAppNames": {"": "LG TV Remote"},
+                    "localizedVendorNames": {"": "Code Kitties"},
                     "permissions": [
                         "LAUNCH", "LAUNCH_WEBAPP", "APP_TO_APP", "CLOSE",
                         "TEST_OPEN", "TEST_PROTECTED", "CONTROL_AUDIO",
@@ -102,7 +102,7 @@ class TVConnection:
             }
         }
     }
-    
+
     COMMANDS = {
         "volumeUp": ("ssap://audio/volumeUp", {}),
         "volumeDown": ("ssap://audio/volumeDown", {}),
@@ -110,7 +110,7 @@ class TVConnection:
         "getVolume": ("ssap://audio/getVolume", {}),
         "getSystemInfo": ("ssap://system/getSystemInfo", {}),
     }
-    
+
     def __init__(self, name, ip, client_key, use_ssl=True):
         self.name = name
         self.ip = ip
@@ -120,32 +120,32 @@ class TVConnection:
         self.input_ws = None
         self.msg_id = 0
         self.connected = False
-    
+
     async def connect(self):
         """Connect and register with the TV."""
         protocol = "wss" if self.use_ssl else "ws"
         port = 3001 if self.use_ssl else 3000
         uri = f"{protocol}://{self.ip}:{port}"
         ssl_context = get_ssl_context() if self.use_ssl else None
-        
+
         try:
             self.ws = await asyncio.wait_for(
                 websockets.connect(uri, ssl=ssl_context, close_timeout=2),
                 timeout=5
             )
-            
+
             # Register
             import copy
             handshake = copy.deepcopy(self.HANDSHAKE)
             if self.client_key:
                 handshake["payload"]["client-key"] = self.client_key
-            
+
             await self.ws.send(json.dumps(handshake))
-            
+
             # Wait for registration
             response = await asyncio.wait_for(self.ws.recv(), timeout=5)
             data = json.loads(response)
-            
+
             if data.get("type") == "registered":
                 self.connected = True
                 # Get input socket for button commands
@@ -153,17 +153,17 @@ class TVConnection:
                 return True
             else:
                 raise Exception(f"Registration failed: {data}")
-                
+
         except Exception as e:
             self.connected = False
             raise
-    
+
     async def _connect_input_socket(self):
         """Connect to the pointer input socket for button commands."""
         try:
             response = await self.send_command("ssap://com.webos.service.networkinput/getPointerInputSocket")
             socket_path = response.get("payload", {}).get("socketPath")
-            
+
             if socket_path:
                 ssl_context = get_ssl_context() if self.use_ssl else None
                 self.input_ws = await websockets.connect(socket_path, ssl=ssl_context)
@@ -219,12 +219,12 @@ def _normalize_mac(mac):
     if len(clean) != 12 or not all(c in "0123456789ABCDEF" for c in clean):
         return None
     return ":".join(clean[i:i+2] for i in range(0, 12, 2))
-    
+
     async def send_command(self, uri, payload=None):
         """Send a command to the TV."""
         if not self.ws or not self.connected:
             raise Exception("Not connected")
-        
+
         self.msg_id += 1
         msg = {
             "type": "request",
@@ -235,27 +235,27 @@ def _normalize_mac(mac):
         await self.ws.send(json.dumps(msg))
         response = await asyncio.wait_for(self.ws.recv(), timeout=3)
         return json.loads(response)
-    
+
     async def send_button(self, button):
         """Send a button press."""
         if not self.input_ws:
             # Try to reconnect input socket
             await self._connect_input_socket()
-        
+
         if not self.input_ws:
             raise Exception("Input socket not available")
-        
+
         cmd = f"type:button\nname:{button.upper()}\n\n"
         await self.input_ws.send(cmd)
         return {"success": True}
-    
+
     async def execute(self, command, args=None):
         """Execute a command."""
         try:
             if command == "sendButton":
                 button = args[0] if args else "ENTER"
                 return await self.send_button(button)
-            
+
             elif command == "mute":
                 # Discrete mute (true) or unmute (false)
                 mute_value = True  # default to mute
@@ -263,7 +263,7 @@ def _normalize_mac(mac):
                     mute_value = False
                 result = await self.send_command("ssap://audio/setMute", {"mute": mute_value})
                 return {"success": True, "result": result, "muted": mute_value}
-            
+
             elif command == "on":
                 # Power on requires Wake-on-LAN (optionally wake streaming device too)
                 return await self.wake_on_lan()
@@ -293,12 +293,12 @@ def _normalize_mac(mac):
                 uri, payload = self.COMMANDS[command]
                 result = await self.send_command(uri, payload)
                 return {"success": True, "result": result}
-            
+
             else:
                 return {"success": False, "error": f"Unknown command: {command}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
-    
+
     async def wake_on_lan(self):
         """Send Wake-on-LAN magic packet to turn on TV. Optionally wake streaming device too."""
         import socket
@@ -373,7 +373,7 @@ def _wake_streaming_device(device):
                 s.close()
             except Exception:
                 pass
-    
+
     async def close(self):
         """Close connections."""
         self.connected = False
@@ -417,32 +417,32 @@ async def keepalive_loop(daemon, interval_secs=25):
 
 class Daemon:
     """Daemon that handles commands from the widget."""
-    
+
     def __init__(self):
         self.tv = None
         self.running = False
         self._keepalive_task = None
-    
+
     async def handle_client(self, reader, writer):
         """Handle a command from the widget."""
         try:
             data = await asyncio.wait_for(reader.readline(), timeout=5)
             if not data:
                 return
-            
+
             request = json.loads(data.decode().strip())
             cmd = request.get("cmd")
             args = request.get("args", [])
-            
+
             if cmd == "connect":
                 # Connect to TV
                 name = request.get("name")
                 ip = request.get("ip")
                 use_ssl = request.get("ssl", True)
-                
+
                 config = load_config()
                 client_key = config.get("tvs", {}).get(name, {}).get("client_key")
-                
+
                 if self._keepalive_task:
                     self._keepalive_task.cancel()
                     try:
@@ -453,7 +453,7 @@ class Daemon:
                 if self.tv:
                     await self.tv.close()
                     self.tv = None
-                
+
                 self.tv = TVConnection(name, ip, client_key, use_ssl)
                 try:
                     await self.tv.connect()
@@ -461,7 +461,7 @@ class Daemon:
                     response = {"success": True, "message": "Connected"}
                 except Exception as e:
                     response = {"success": False, "error": str(e)}
-            
+
             elif cmd == "disconnect":
                 if self._keepalive_task:
                     self._keepalive_task.cancel()
@@ -474,7 +474,7 @@ class Daemon:
                     await self.tv.close()
                     self.tv = None
                 response = {"success": True}
-            
+
             elif cmd == "status":
                 response = {"success": True, "connected": self.tv.connected if self.tv else False}
 
@@ -512,16 +512,16 @@ class Daemon:
             elif cmd == "stop":
                 self.running = False
                 response = {"success": True, "message": "Stopping daemon"}
-            
+
             elif self.tv and self.tv.connected:
                 response = await self.tv.execute(cmd, args)
-            
+
             else:
                 response = {"success": False, "error": "Not connected to TV"}
-            
+
             writer.write((json.dumps(response) + "\n").encode())
             await writer.drain()
-            
+
         except asyncio.TimeoutError:
             pass
         except Exception as e:
@@ -533,28 +533,28 @@ class Daemon:
         finally:
             writer.close()
             await writer.wait_closed()
-    
+
     async def run(self):
         """Run the daemon."""
         # Remove old socket
         if SOCKET_PATH.exists():
             SOCKET_PATH.unlink()
-        
+
         # Write PID file
         PID_FILE.write_text(str(os.getpid()))
-        
+
         self.running = True
         server = await asyncio.start_unix_server(self.handle_client, path=str(SOCKET_PATH))
-        
+
         # Make socket accessible
         os.chmod(SOCKET_PATH, 0o600)
-        
+
         print(f"Daemon listening on {SOCKET_PATH}", file=sys.stderr)
-        
+
         async with server:
             while self.running:
                 await asyncio.sleep(0.1)
-        
+
         # Cleanup
         if self.tv:
             await self.tv.close()
@@ -573,11 +573,11 @@ async def send_to_daemon(request):
         )
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
-        
+
         response = await asyncio.wait_for(reader.readline(), timeout=5)
         writer.close()
         await writer.wait_closed()
-        
+
         return json.loads(response.decode().strip())
     except FileNotFoundError:
         return {"success": False, "error": "Daemon not running"}
@@ -607,34 +607,34 @@ def main():
         print("Usage: lgtv_daemon.py <command> [args...]")
         print("Commands: start, stop, status, connect, send, ...")
         sys.exit(1)
-    
+
     command = sys.argv[1]
-    
+
     if command == "start":
         if is_daemon_running():
             print(json.dumps({"success": False, "error": "Daemon already running"}))
             sys.exit(0)
-        
+
         # Fork to background
         if os.fork() > 0:
             sys.exit(0)
-        
+
         os.setsid()
         if os.fork() > 0:
             sys.exit(0)
-        
+
         # Redirect stdio
         sys.stdin = open(os.devnull, 'r')
         sys.stdout = open(os.devnull, 'w')
-        
+
         # Run daemon
         daemon = Daemon()
         asyncio.run(daemon.run())
-    
+
     elif command == "stop":
         result = asyncio.run(send_to_daemon({"cmd": "stop"}))
         print(json.dumps(result))
-    
+
     elif command == "status":
         if not is_daemon_running():
             print(json.dumps({"success": True, "running": False}))
@@ -642,16 +642,16 @@ def main():
             result = asyncio.run(send_to_daemon({"cmd": "status"}))
             result["running"] = True
             print(json.dumps(result))
-    
+
     elif command == "connect":
         if len(sys.argv) < 4:
             print(json.dumps({"success": False, "error": "Usage: connect <name> <ip> [--no-ssl]"}))
             sys.exit(1)
-        
+
         name = sys.argv[2]
         ip = sys.argv[3]
         use_ssl = "--no-ssl" not in sys.argv
-        
+
         result = asyncio.run(send_to_daemon({
             "cmd": "connect",
             "name": name,
@@ -659,15 +659,15 @@ def main():
             "ssl": use_ssl
         }))
         print(json.dumps(result))
-    
+
     elif command == "send":
         if len(sys.argv) < 3:
             print(json.dumps({"success": False, "error": "Usage: send <command> [args...]"}))
             sys.exit(1)
-        
+
         cmd = sys.argv[2]
         args = sys.argv[3].split(",") if len(sys.argv) > 3 and sys.argv[3] else []
-        
+
         result = asyncio.run(send_to_daemon({"cmd": cmd, "args": args}))
         print(json.dumps(result))
 
@@ -699,7 +699,7 @@ def main():
             sys.exit(1)
         result = asyncio.run(send_to_daemon({"cmd": "set_mac", "name": sys.argv[2], "mac": sys.argv[3]}))
         print(json.dumps(result))
-    
+
     else:
         # Direct command to daemon
         args = sys.argv[2].split(",") if len(sys.argv) > 2 and sys.argv[2] else []

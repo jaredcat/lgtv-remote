@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "LG TV Remote",
-  "version": "1.3.0",
-  "identifier": "com.lgtv.remote",
+  "version": "0.0.0",
+  "identifier": "com.codekitties.lgtv.remote",
   "build": {
     "frontendDist": "../src"
   },
@@ -24,12 +24,21 @@
     ],
     "security": {
       "csp": null,
-      "capabilities": ["autostart"]
+      "capabilities": ["autostart", "updater"]
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0MUY0RkE0NTY5QTkyMEMKUldRTWtwcFdwRThmZEpwSVFjTi9UbTgyN09venk3TE1JejVaS3VaUllHd0hqNGJieEZrUjVmZWwK",
+      "endpoints": [
+        "https://github.com/jaredcat/plasmoid-lgtv-remote/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -84,7 +84,7 @@
 
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
-          version = "1.3.0";
+          version = "0.0.0";
 
           src = ./.;
 
@@ -98,8 +98,6 @@
           nativeBuildInputs = with pkgs; [
             pkg-config
             cargo-tauri
-            librsvg
-            imagemagick
             makeWrapper
             copyDesktopItems
             fontconfig
@@ -108,15 +106,6 @@
           ];
 
           inherit buildInputs;
-
-          postPatch = ''
-            patchShebangs generate-icons.sh
-          '';
-
-          preBuild = ''
-            # Generate icons
-            ./generate-icons.sh
-          '';
 
           # Skip default cargo build, use tauri instead
           buildPhase = ''

@@ -15,6 +15,7 @@ use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 use tv::{CommandResult, TvConnection};
 
@@ -806,6 +807,46 @@ fn toggle_window(app: &AppHandle, x: f64, y: f64) {
     }
 }
 
+// ============ Updater ============
+
+#[tauri::command]
+async fn check_for_updates(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    match update {
+        Some(update) => Ok(Some(serde_json::json!({
+            "version": update.version,
+            "body": update.body,
+        }))),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
+    let update = app
+        .updater()
+        .map_err(|e| e.to_string())?
+        .check()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some(update) = update {
+        update
+            .download_and_install(|_, _| {}, || {})
+            .await
+            .map_err(|e| e.to_string())?;
+        app.restart();
+    } else {
+        Err("No update available".to_string())
+    }
+}
+
 // ============ Main ============
 
 fn main() {
@@ -818,7 +859,8 @@ fn main() {
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build());
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
 
     #[cfg(feature = "autostart")]
     let builder = builder.plugin(tauri_plugin_autostart::init(
@@ -954,6 +996,34 @@ fn main() {
                 log::warn!("Failed to register global shortcuts: {}", e);
             }
 
+            // Background update check on startup (delay to avoid slowing launch)
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                match handle.updater() {
+                    Ok(updater) => match updater.check().await {
+                        Ok(Some(update)) => {
+                            let _ = handle.emit(
+                                "update-check-result",
+                                serde_json::json!({
+                                    "version": update.version,
+                                    "body": update.body,
+                                }),
+                            );
+                        }
+                        Ok(None) => {
+                            log::info!("No update available");
+                        }
+                        Err(e) => {
+                            log::warn!("Background update check failed: {}", e);
+                        }
+                    },
+                    Err(e) => {
+                        log::warn!("Failed to build updater: {}", e);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -986,6 +1056,8 @@ fn main() {
             reset_window_size,
             get_autostart_enabled,
             set_autostart_enabled,
+            check_for_updates,
+            download_and_install_update,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

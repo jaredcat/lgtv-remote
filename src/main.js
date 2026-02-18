@@ -1066,6 +1066,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupShortcutRecorder();
   listenRunCommand();
   listenConnectionLost();
+  listenUpdateCheckResult();
 });
 
 function listenRunCommand() {
@@ -1085,6 +1086,62 @@ function listenConnectionLost() {
     window.__TAURI__.event.listen('connection-lost', () => {
       setStatus(false, 'Disconnected');
     });
+  }
+}
+
+function listenUpdateCheckResult() {
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('update-check-result', (e) => {
+      const payload = e.payload;
+      const banner = document.getElementById('update-banner');
+      const text = document.getElementById('update-banner-text');
+      if (!banner || !text) return;
+      if (payload && payload.version) {
+        text.textContent = `Update ${payload.version} available.`;
+        banner.style.display = '';
+      } else {
+        text.textContent = "You're on the latest version.";
+        banner.style.display = '';
+        document.getElementById('btn-install-update').style.display = 'none';
+        setTimeout(() => {
+          banner.style.display = 'none';
+          document.getElementById('btn-install-update').style.display = '';
+        }, 3000);
+      }
+    });
+  }
+}
+
+async function checkForUpdates() {
+  try {
+    const meta = await invoke('check_for_updates');
+    const banner = document.getElementById('update-banner');
+    const text = document.getElementById('update-banner-text');
+    const installBtn = document.getElementById('btn-install-update');
+    if (!banner || !text) return;
+    if (meta && meta.version) {
+      text.textContent = `Update ${meta.version} available.`;
+      installBtn.style.display = '';
+      banner.style.display = '';
+    } else {
+      text.textContent = "You're on the latest version.";
+      installBtn.style.display = 'none';
+      banner.style.display = '';
+      setTimeout(() => {
+        banner.style.display = 'none';
+      }, 3000);
+    }
+  } catch (e) {
+    showToast(e?.toString?.() || 'Update check failed', 'error');
+  }
+}
+
+async function installUpdate() {
+  try {
+    await invoke('download_and_install_update');
+    showToast('Installing update…', 'success');
+  } catch (e) {
+    showToast(e?.toString?.() || 'Install failed', 'error');
   }
 }
 

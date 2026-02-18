@@ -60,7 +60,7 @@ def get_ssl_context():
 
 class LGTVClient:
     """Simple LG webOS TV client."""
-    
+
     HANDSHAKE = {
         "type": "register",
         "id": "register_0",
@@ -72,9 +72,9 @@ class LGTVClient:
                 "appVersion": "1.1",
                 "signed": {
                     "created": "20140509",
-                    "appId": "com.lge.test",
-                    "vendorId": "com.lge",
-                    "localizedAppNames": {"": "LG Remote"},
+                    "appId": "com.codekitties.lgtv.remote",
+                    "vendorId": "com.codekitties",
+                    "localizedAppNames": {"": "LG TV Remote"},
                     "localizedVendorNames": {"": "LG Electronics"},
                     "permissions": [
                         "LAUNCH", "LAUNCH_WEBAPP", "APP_TO_APP", "CLOSE",
@@ -111,7 +111,7 @@ class LGTVClient:
             }
         }
     }
-    
+
     COMMANDS = {
         "volumeUp": ("ssap://audio/volumeUp", {}),
         "volumeDown": ("ssap://audio/volumeDown", {}),
@@ -121,7 +121,7 @@ class LGTVClient:
         "channelDown": ("ssap://tv/channelDown", {}),
         "getSystemInfo": ("ssap://system/getSystemInfo", {}),
     }
-    
+
     BUTTONS = {
         "UP": "UP", "DOWN": "DOWN", "LEFT": "LEFT", "RIGHT": "RIGHT",
         "ENTER": "ENTER", "BACK": "BACK", "HOME": "HOME", "EXIT": "EXIT",
@@ -132,7 +132,7 @@ class LGTVClient:
         "0": "0", "1": "1", "2": "2", "3": "3", "4": "4",
         "5": "5", "6": "6", "7": "7", "8": "8", "9": "9",
     }
-    
+
     def __init__(self, ip, name, use_ssl=True):
         self.ip = ip
         self.name = name
@@ -140,22 +140,22 @@ class LGTVClient:
         self.ws = None
         self.msg_id = 0
         self.client_key = None
-        
+
         # Load saved client key
         config = load_config()
         if name in config.get("tvs", {}):
             self.client_key = config["tvs"][name].get("client_key")
-    
+
     def _get_uri(self):
         protocol = "wss" if self.use_ssl else "ws"
         port = 3001 if self.use_ssl else 3000
         return f"{protocol}://{self.ip}:{port}"
-    
+
     async def connect(self):
         """Connect to the TV."""
         uri = self._get_uri()
         ssl_context = get_ssl_context() if self.use_ssl else None
-        
+
         try:
             self.ws = await asyncio.wait_for(
                 websockets.connect(uri, ssl=ssl_context, close_timeout=2),
@@ -164,24 +164,24 @@ class LGTVClient:
             return True
         except Exception as e:
             raise ConnectionError(f"Failed to connect to TV: {e}")
-    
+
     async def register(self):
         """Register/authenticate with the TV."""
         import copy
         handshake = copy.deepcopy(self.HANDSHAKE)
         if self.client_key:
             handshake["payload"]["client-key"] = self.client_key
-        
+
         await self.ws.send(json.dumps(handshake))
-        
+
         # Wait for registration response
         # Short timeout if we have a key (should be instant), longer for new pairing
         timeout = 5 if self.client_key else 60
-        
+
         while True:
             response = await asyncio.wait_for(self.ws.recv(), timeout=timeout)
             data = json.loads(response)
-            
+
             if data.get("type") == "registered":
                 # Save the client key for future connections
                 new_key = data.get("payload", {}).get("client-key")
@@ -202,7 +202,7 @@ class LGTVClient:
                 continue
             elif data.get("type") == "error":
                 raise Exception(data.get("error", "Registration failed"))
-    
+
     async def send_command(self, uri, payload=None):
         """Send a command to the TV."""
         self.msg_id += 1
@@ -213,20 +213,20 @@ class LGTVClient:
             "payload": payload or {}
         }
         await self.ws.send(json.dumps(msg))
-        
+
         # Wait for response (short timeout for responsiveness)
         response = await asyncio.wait_for(self.ws.recv(), timeout=3)
         return json.loads(response)
-    
+
     async def send_button(self, button):
         """Send a button press using the input socket."""
         # Get pointer input socket
         response = await self.send_command("ssap://com.webos.service.networkinput/getPointerInputSocket")
         socket_path = response.get("payload", {}).get("socketPath")
-        
+
         if not socket_path:
             raise Exception(f"Failed to get input socket. Response: {response}")
-        
+
         # Connect to input socket
         ssl_context = get_ssl_context() if self.use_ssl else None
         try:
@@ -236,11 +236,11 @@ class LGTVClient:
                 await input_ws.send(cmd)
                 # Minimal delay - just enough for the command to be sent
                 await asyncio.sleep(0.05)
-            
+
             return {"success": True}
         except Exception as e:
             raise Exception(f"Input socket error: {e}")
-    
+
     async def close(self):
         """Close the connection."""
         if self.ws:
@@ -249,24 +249,24 @@ class LGTVClient:
 
 async def run_command(ip, name, command, args=None, use_ssl=True):
     """Run a command on the TV."""
-    
+
     # Power on uses Wake-on-LAN (doesn't need WebSocket)
     if command == "on":
         return await wake_on_lan_async(name)
-    
+
     client = LGTVClient(ip, name, use_ssl)
-    
+
     try:
         await client.connect()
         await client.register()
-        
+
         # Handle different command types
         if command == "sendButton":
             button = args[0].upper() if args else "ENTER"
             if button not in client.BUTTONS:
                 return {"success": False, "error": f"Unknown button: {button}"}
             result = await client.send_button(button)
-        
+
         elif command == "mute":
             # Discrete mute (true) or unmute (false)
             mute_value = True  # default to mute
@@ -274,19 +274,19 @@ async def run_command(ip, name, command, args=None, use_ssl=True):
                 mute_value = False
             result = await client.send_command("ssap://audio/setMute", {"mute": mute_value})
             return {"success": True, "result": result, "muted": mute_value}
-        
+
         elif command in client.COMMANDS:
             uri, payload = client.COMMANDS[command]
             result = await client.send_command(uri, payload)
-        
+
         else:
             return {"success": False, "error": f"Unknown command: {command}"}
-        
+
         return {"success": True, "result": result}
-    
+
     except Exception as e:
         return {"success": False, "error": str(e)}
-    
+
     finally:
         await client.close()
 
@@ -436,25 +436,25 @@ async def _get_mac_from_tv(client):
 async def authenticate(ip, name, use_ssl=True):
     """Authenticate with a TV (triggers pairing prompt) and save MAC for WoL."""
     client = LGTVClient(ip, name, use_ssl)
-    
+
     try:
         await client.connect()
         await client.register()
-        
+
         mac = await _get_mac_from_tv(client)
-        
+
         if mac:
             config = load_config()
             if name in config.get("tvs", {}):
                 config["tvs"][name]["mac"] = mac
                 save_config(config)
-        
+
         msg = "Authentication successful. Key saved."
         if mac:
             msg += f" MAC: {mac}"
         else:
             msg += " (MAC not found - Power On may not work)"
-        
+
         return {"success": True, "message": msg}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -465,17 +465,17 @@ async def authenticate(ip, name, use_ssl=True):
 async def wake_on_lan(mac_address):
     """Send Wake-on-LAN magic packet."""
     import socket
-    
+
     # Create magic packet
     mac_bytes = bytes.fromhex(mac_address.replace(":", "").replace("-", ""))
     magic_packet = b'\xff' * 6 + mac_bytes * 16
-    
+
     # Send to broadcast
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.sendto(magic_packet, ('255.255.255.255', 9))
     sock.close()
-    
+
     return {"success": True, "message": "Wake-on-LAN packet sent"}
 
 
@@ -483,9 +483,9 @@ def main():
     if len(sys.argv) < 2:
         print(json.dumps({"success": False, "error": "Usage: lgtv_remote.py <command> [args...]"}))
         sys.exit(1)
-    
+
     command = sys.argv[1]
-    
+
     if command == "auth":
         if len(sys.argv) < 4:
             print(json.dumps({"success": False, "error": "Usage: auth <ip> <name> [--ssl/--no-ssl]"}))
@@ -494,7 +494,7 @@ def main():
         name = sys.argv[3]
         use_ssl = "--no-ssl" not in sys.argv
         result = asyncio.run(authenticate(ip, name, use_ssl))
-        
+
     elif command == "send":
         if len(sys.argv) < 4:
             print(json.dumps({"success": False, "error": "Usage: send <name> <command> [args] [--ssl/--no-ssl]"}))
@@ -503,32 +503,32 @@ def main():
         cmd = sys.argv[3]
         args = sys.argv[4].split(",") if len(sys.argv) > 4 and sys.argv[4] and sys.argv[4] not in ("--no-ssl", "--ssl", "") else []
         use_ssl = "--no-ssl" not in sys.argv
-        
+
         # Look up IP from config
         config = load_config()
         tv_config = config.get("tvs", {}).get(name, {})
         ip = tv_config.get("ip")
-        
+
         if not ip:
             print(json.dumps({"success": False, "error": f"TV '{name}' not found. Run auth first."}))
             sys.exit(1)
-        
+
         result = asyncio.run(run_command(ip, name, cmd, args, use_ssl))
-        
+
     elif command == "wol":
         if len(sys.argv) < 3:
             print(json.dumps({"success": False, "error": "Usage: wol <mac_address>"}))
             sys.exit(1)
         result = asyncio.run(wake_on_lan(sys.argv[2]))
-        
+
     elif command == "list":
         config = load_config()
         result = {"success": True, "tvs": list(config.get("tvs", {}).keys())}
-        
+
     else:
         print(json.dumps({"success": False, "error": f"Unknown command: {command}"}))
         sys.exit(1)
-    
+
     print(json.dumps(result))
 
 

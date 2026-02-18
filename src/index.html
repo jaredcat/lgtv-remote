@@ -198,8 +198,25 @@
             </button>
           </div>
 
+          <div id="update-banner" class="update-banner" style="display: none">
+            <span id="update-banner-text"></span>
+            <button
+              type="button"
+              class="btn primary btn-install-update"
+              onclick="installUpdate()"
+              id="btn-install-update">
+              Install update
+            </button>
+          </div>
           <div class="app-version-row">
             <span id="app-version" class="app-version"></span>
+            <button
+              type="button"
+              class="btn-link"
+              onclick="checkForUpdates()"
+              title="Check for app updates">
+              Check for updates
+            </button>
             <span
               id="window-size-dev"
               class="window-size-dev"

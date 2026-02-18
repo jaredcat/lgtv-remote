@@ -84,10 +84,10 @@ impl TvConnection {
                     "appVersion": "1.1",
                     "signed": {
                         "created": "20140509",
-                        "appId": "com.lge.test",
-                        "vendorId": "com.lge",
-                        "localizedAppNames": {"": "LG Remote"},
-                        "localizedVendorNames": {"": "LG Electronics"},
+                        "appId": "com.codekitties.lgtv.remote",
+                        "vendorId": "com.codekitties",
+                        "localizedAppNames": {"": "LG TV Remote"},
+                        "localizedVendorNames": {"": "Code Kitties"},
                         "permissions": [
                             "LAUNCH", "LAUNCH_WEBAPP", "APP_TO_APP", "CLOSE",
                             "TEST_OPEN", "TEST_PROTECTED", "CONTROL_AUDIO",

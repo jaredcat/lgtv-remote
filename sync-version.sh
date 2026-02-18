@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Sync version from a single source to tauri.conf.json, Cargo.toml, and flake.nix.
-# Usage:
+# DEPRECATED: Releases are tag-driven. CI sets version from the git tag when you push
+# e.g. "v1.4.1". You do not need to run this script to release.
+#
+# Optional: use this only if you want the version in the repo (for local/dev builds)
+# to match a specific version. Usage:
 #   ./sync-version.sh              # use version from src-tauri/Cargo.toml
-#   ./sync-version.sh 1.0.4         # set version to 1.0.4 everywhere
+#   ./sync-version.sh 1.0.4        # set version to 1.0.4 everywhere
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
