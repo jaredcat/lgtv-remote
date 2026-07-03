@@ -22,9 +22,8 @@
           extensions = [ "rust-src" ];
         };
 
-        # Common build inputs for Tauri
-        buildInputs = with pkgs; [
-          # Tauri dependencies
+        # Linux-only GTK/WebKit deps (webkitgtk is marked broken on Darwin in nixpkgs)
+        linuxBuildInputs = with pkgs; [
           webkitgtk_4_1
           gtk3
           cairo
@@ -33,41 +32,32 @@
           dbus
           openssl
           librsvg
-
-          # For system tray
           libappindicator-gtk3
-
-          # Emoji font so UI emoji render consistently on NixOS
           noto-fonts-color-emoji
         ];
 
         nativeBuildInputs = with pkgs; [
           rustToolchain
           pkg-config
-
-          # For icon generation
           librsvg
           imagemagick
-
-          # Tauri CLI
           cargo-tauri
-
-          # Check for outdated dependencies
           cargo-outdated
         ];
 
-        # Runtime library path for system tray
         runtimeLibs = with pkgs; [
           libappindicator-gtk3
           libayatana-appindicator
         ];
 
-      in {
-        devShells.default = pkgs.mkShell {
-          inherit buildInputs nativeBuildInputs;
+        devShell = pkgs.mkShell {
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux linuxBuildInputs;
+          inherit nativeBuildInputs;
 
           shellHook = ''
-            export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+            ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+              export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
+            ''}
             echo "LG TV Remote development environment"
             echo ""
             echo "Commands:"
@@ -76,13 +66,16 @@
             echo "  cargo outdated     - Check for outdated dependencies"
             echo "  ./generate-icons.sh - Generate icon files"
             echo ""
+            ${pkgs.lib.optionalString (!pkgs.stdenv.isLinux) ''
+              echo "Note: nix build .#default is Linux-only. On macOS use cargo tauri build."
+              echo ""
+            ''}
           '';
 
-          # Required for Tauri
           WEBKIT_DISABLE_COMPOSITING_MODE = "1";
         };
 
-        packages.default = pkgs.rustPlatform.buildRustPackage {
+        trayPackage = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
           version = "0.0.0";
 
@@ -105,7 +98,7 @@
             gsettings-desktop-schemas
           ];
 
-          inherit buildInputs;
+          buildInputs = linuxBuildInputs;
 
           # Skip default cargo build, use tauri instead
           buildPhase = ''
@@ -137,7 +130,7 @@ Categories=Utility;
 EOF
 
             wrapProgram $out/bin/lgtv-tray-remote \
-              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (buildInputs ++ runtimeLibs)}" \
+              --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath (linuxBuildInputs ++ runtimeLibs)}" \
               --set WEBKIT_DISABLE_COMPOSITING_MODE 1 \
               --set WEBKIT_DISABLE_DMABUF_RENDERER 1 \
               --set TAURI_AUTOSTART_EXEC lgtv-tray-remote \
@@ -155,10 +148,18 @@ EOF
           doCheck = false;
         };
 
-        # Quick run without full install
-        apps.default = {
-          type = "app";
-          program = "${self.packages.${system}.default}/bin/lgtv-tray-remote";
+      in {
+        devShells.default = devShell;
+
+        packages = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          default = trayPackage;
+        };
+
+        apps = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          default = {
+            type = "app";
+            program = "${trayPackage}/bin/lgtv-tray-remote";
+          };
         };
       }
     );
