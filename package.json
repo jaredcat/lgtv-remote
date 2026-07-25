@@ -1,0 +1,20 @@
+{
+  "name": "plasmoid-lgtv-remote",
+  "private": true,
+  "packageManager": "pnpm@11.17.0",
+  "scripts": {
+    "lint": "pnpm lint:js && pnpm lint:py && pnpm lint:rust",
+    "lint:fix": "pnpm lint:js:fix && pnpm lint:py:fix && pnpm format:rust",
+    "lint:js": "biome check .",
+    "lint:js:fix": "biome check --write .",
+    "format:js": "biome format --write .",
+    "lint:py": "ruff check . && ruff format --check . && python3 -m basedpyright",
+    "lint:py:fix": "ruff check --fix . && ruff format .",
+    "format:py": "ruff format .",
+    "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
+    "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5"
+  }
+}

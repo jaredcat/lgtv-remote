@@ -6,23 +6,23 @@ mod tv;
 
 use config::{ActionShortcutConfig, Config, StreamingDeviceConfig, TvConfig, WindowSize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
     image::Image,
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_updater::UpdaterExt;
 use tokio::sync::Mutex;
 use tv::{CommandResult, TvConnection};
 
-#[cfg(feature = "autostart")]
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 #[cfg(all(feature = "autostart", target_os = "linux"))]
 use auto_launch::LinuxLaunchMode;
+#[cfg(feature = "autostart")]
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 // Track window visibility ourselves since is_visible() can be unreliable
 static WINDOW_VISIBLE: AtomicBool = AtomicBool::new(false);
@@ -83,10 +83,7 @@ async fn save_tv(
 }
 
 #[tauri::command]
-async fn set_active_tv(
-    state: tauri::State<'_, Arc<AppState>>,
-    name: String,
-) -> Result<(), String> {
+async fn set_active_tv(state: tauri::State<'_, Arc<AppState>>, name: String) -> Result<(), String> {
     let mut config = state.config.lock().await;
     if config.tvs.contains_key(&name) {
         config.active_tv = Some(name);
@@ -120,13 +117,19 @@ fn spawn_keepalive(state: Arc<AppState>, app: tauri::AppHandle) {
                     match tv.refresh_input_socket().await {
                         Ok(()) => log::debug!("Keepalive: input socket refreshed"),
                         Err(e) => {
-                            log::warn!("Keepalive: refresh input socket failed: {} (retrying in 3s)", e);
+                            log::warn!(
+                                "Keepalive: refresh input socket failed: {} (retrying in 3s)",
+                                e
+                            );
                             drop(tv);
                             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
                             let mut tv = state.tv.lock().await;
                             if tv.connected {
                                 if let Err(e2) = tv.refresh_input_socket().await {
-                                    log::warn!("Keepalive: refresh input socket failed again: {} (will retry next cycle)", e2);
+                                    log::warn!(
+                                        "Keepalive: refresh input socket failed again: {} (will retry next cycle)",
+                                        e2
+                                    );
                                 } else {
                                     log::debug!("Keepalive: input socket refreshed on retry");
                                 }
@@ -152,9 +155,7 @@ async fn connect(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<CommandResult, String> {
     let config = state.config.lock().await;
-    let (name, tv_config) = config
-        .get_active_tv()
-        .ok_or("No TV configured")?;
+    let (name, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
 
     let name = name.clone();
     let ip = tv_config.ip.clone();
@@ -339,14 +340,18 @@ async fn fetch_mac(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResu
             let mut config = state.config.lock().await;
             config.update_mac(&name, mac.clone());
             config.save()?;
-            Ok(CommandResult::ok_with_message(&format!("MAC address saved: {}", mac)))
+            Ok(CommandResult::ok_with_message(&format!(
+                "MAC address saved: {}",
+                mac
+            )))
         }
         Ok(None) => {
             Err("Could not find MAC address in TV response. Please enter manually.".to_string())
         }
-        Err(e) => {
-            Err(format!("Failed to get MAC address: {}. Please enter manually.", e))
-        }
+        Err(e) => Err(format!(
+            "Failed to get MAC address: {}. Please enter manually.",
+            e
+        )),
     }
 }
 
@@ -358,7 +363,10 @@ async fn set_mac(
     // Validate MAC format (basic check)
     let mac_clean = mac.replace([':', '-', ' '], "");
     if mac_clean.len() != 12 || !mac_clean.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("Invalid MAC address format. Use format like AA:BB:CC:DD:EE:FF or AABBCCDDEEFF".to_string());
+        return Err(
+            "Invalid MAC address format. Use format like AA:BB:CC:DD:EE:FF or AABBCCDDEEFF"
+                .to_string(),
+        );
     }
 
     let mut config = state.config.lock().await;
@@ -376,23 +384,28 @@ async fn set_mac(
     config.update_mac(&name, mac_formatted.clone());
     config.save()?;
 
-    Ok(CommandResult::ok_with_message(&format!("MAC address set to: {}", mac_formatted)))
+    Ok(CommandResult::ok_with_message(&format!(
+        "MAC address set to: {}",
+        mac_formatted
+    )))
 }
 
-async fn wake_streaming_device_impl(device: &StreamingDeviceConfig) -> Result<CommandResult, String> {
+async fn wake_streaming_device_impl(
+    device: &StreamingDeviceConfig,
+) -> Result<CommandResult, String> {
     match device {
         StreamingDeviceConfig::Wol { mac, broadcast_ip } => {
             tv::wake_on_lan(mac, broadcast_ip.as_deref())
         }
-        StreamingDeviceConfig::Adb { ip, port } => {
-            tv::wake_adb(ip, port.unwrap_or(5555)).await
-        }
+        StreamingDeviceConfig::Adb { ip, port } => tv::wake_adb(ip, port.unwrap_or(5555)).await,
         StreamingDeviceConfig::Roku { ip } => tv::wake_roku(ip).await,
     }
 }
 
 #[tauri::command]
-async fn wake_streaming_device(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
+async fn wake_streaming_device(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<CommandResult, String> {
     let config = state.config.lock().await;
     let device = config
         .streaming_device
@@ -539,7 +552,9 @@ async fn reset_window_size(
 }
 
 #[tauri::command]
-async fn get_shortcut_settings(state: tauri::State<'_, Arc<AppState>>) -> Result<(String, bool), String> {
+async fn get_shortcut_settings(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(String, bool), String> {
     let config = state.config.lock().await;
     Ok((config.global_shortcut.clone(), config.shortcut_enabled))
 }
@@ -575,7 +590,9 @@ async fn set_shortcut(
 }
 
 #[tauri::command]
-async fn get_action_shortcuts(state: tauri::State<'_, Arc<AppState>>) -> Result<HashMap<String, ActionShortcutConfig>, String> {
+async fn get_action_shortcuts(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<HashMap<String, ActionShortcutConfig>, String> {
     let config = state.config.lock().await;
     Ok(config.action_shortcuts.clone())
 }
@@ -657,7 +674,9 @@ async fn run_action_impl(state: Arc<AppState>, action_id: &str) -> Result<(), St
 
 /// Modifier key names (case-insensitive). Global hotkeys must include at least one
 /// so they don't capture keys during normal typing.
-const GLOBAL_MODIFIERS: &[&str] = &["ctrl", "control", "alt", "shift", "super", "command", "meta"];
+const GLOBAL_MODIFIERS: &[&str] = &[
+    "ctrl", "control", "alt", "shift", "super", "command", "meta",
+];
 
 fn shortcut_has_modifier(s: &str) -> bool {
     s.split('+')
@@ -714,7 +733,8 @@ fn register_all_global_shortcuts(app: &AppHandle) -> Result<(), String> {
             if ac.global && !ac.shortcut.is_empty() && !shortcut_has_modifier(&ac.shortcut) {
                 log::warn!(
                     "Action shortcut '{}' for {} has no modifier; not registered as global",
-                    ac.shortcut, action_id
+                    ac.shortcut,
+                    action_id
                 );
             }
             continue;
@@ -722,7 +742,12 @@ fn register_all_global_shortcuts(app: &AppHandle) -> Result<(), String> {
         let shortcut: Shortcut = match ac.shortcut.parse() {
             Ok(s) => s,
             Err(e) => {
-                log::warn!("Invalid action shortcut '{}' for {}: {}", ac.shortcut, action_id, e);
+                log::warn!(
+                    "Invalid action shortcut '{}' for {}: {}",
+                    ac.shortcut,
+                    action_id,
+                    e
+                );
                 continue;
             }
         };
@@ -943,7 +968,10 @@ fn main() {
                             if size.width > 0 && size.height > 0 {
                                 let (w, h) = outer_to_inner_size(size.width, size.height);
                                 let mut config = Config::load();
-                                config.window_size = Some(WindowSize { width: w, height: h });
+                                config.window_size = Some(WindowSize {
+                                    width: w,
+                                    height: h,
+                                });
                                 let _ = config.save();
                             }
                         }
@@ -985,18 +1013,16 @@ fn main() {
                         toggle_window(tray.app_handle(), position.x, position.y);
                     }
                 })
-                .on_menu_event(|app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                WINDOW_VISIBLE.store(true, Ordering::SeqCst);
-                            }
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            WINDOW_VISIBLE.store(true, Ordering::SeqCst);
                         }
-                        "quit" => app.exit(0),
-                        _ => {}
                     }
+                    "quit" => app.exit(0),
+                    _ => {}
                 })
                 .build(app)?;
 

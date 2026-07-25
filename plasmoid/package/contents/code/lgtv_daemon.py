@@ -5,530 +5,403 @@ Maintains a persistent WebSocket connection to the TV for fast command execution
 Listens on a Unix socket for commands from the Plasma widget.
 """
 
+from __future__ import annotations
+
 import asyncio
+import importlib.util
+import inspect
 import json
-import ssl
-import sys
 import os
-import signal
+import sys
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import TypeAlias, cast
 
-try:
-    import websockets
-except ImportError:
-    print("ERROR: websockets module required", file=sys.stderr)
-    sys.exit(1)
+_SetupLgtvImports = Callable[[str | Path], Path]
 
-# Socket and config paths
-RUNTIME_DIR = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp"))
+_bootstrap_spec = importlib.util.spec_from_file_location(
+    "_lgtv_bootstrap",
+    Path(__file__).resolve().parent / "_bootstrap.py",
+)
+if _bootstrap_spec is None or _bootstrap_spec.loader is None:
+    raise ImportError("Cannot load _bootstrap.py")
+_bootstrap = importlib.util.module_from_spec(_bootstrap_spec)
+_bootstrap_spec.loader.exec_module(_bootstrap)
+_ = cast(_SetupLgtvImports, _bootstrap.setup_lgtv_imports)(__file__)
+
+from lgtv.config import load_config, save_config
+from lgtv.streaming import wake_streaming_device
+from lgtv.tv import TVConnection, normalize_mac, wol_send
+from lgtv.types import (
+    JsonDict,
+    JsonValue,
+    as_streaming_device,
+    json_dict_get_dict,
+    json_dict_get_str,
+    parse_json,
+)
+
+
+def _daemon_runtime_dir() -> Path:
+    """Return a private runtime directory for the daemon socket and PID file."""
+    xdg_runtime = os.environ.get("XDG_RUNTIME_DIR")
+    if xdg_runtime:
+        path = Path(xdg_runtime)
+        if path.is_dir() and os.access(path, os.W_OK | os.X_OK):
+            return path
+
+    path = Path.home() / ".cache" / "lgtv-remote" / "run"
+    path.mkdir(parents=True, exist_ok=True)
+    path.chmod(0o700)
+    return path
+
+
+# Socket paths
+RUNTIME_DIR = _daemon_runtime_dir()
 SOCKET_PATH = RUNTIME_DIR / "lgtv-remote.sock"
 PID_FILE = RUNTIME_DIR / "lgtv-remote.pid"
-CONFIG_DIR = Path.home() / ".config" / "lgtv-remote"
-CONFIG_FILE = CONFIG_DIR / "config.json"
+
+ExecuteHandler: TypeAlias = Callable[[list[str] | None], JsonDict | Awaitable[JsonDict]]
+ClientCommandHandler: TypeAlias = Callable[[JsonDict], JsonDict | Awaitable[JsonDict]]
 
 
-def get_ssl_context():
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    return ctx
-
-
-def load_config():
-    if CONFIG_FILE.exists():
-        try:
-            return json.loads(CONFIG_FILE.read_text())
-        except Exception:
-            pass
-    return {"tvs": {}, "streaming_device": None, "wake_streaming_on_power_on": False}
-
-
-def save_config(config):
-    """Save config to disk (used when updating MAC, etc.)."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2))
-
-
-class TVConnection:
-    """Maintains persistent connection to a TV."""
-
-    HANDSHAKE = {
-        "type": "register",
-        "id": "register_0",
-        "payload": {
-            "forcePairing": False,
-            "pairingType": "PROMPT",
-            "manifest": {
-                "manifestVersion": 1,
-                "appVersion": "1.1",
-                "signed": {
-                    "created": "20140509",
-                    "appId": "com.codekitties.lgtv.remote",
-                    "vendorId": "com.codekitties",
-                    "localizedAppNames": {"": "LG TV Remote"},
-                    "localizedVendorNames": {"": "Code Kitties"},
-                    "permissions": [
-                        "LAUNCH", "LAUNCH_WEBAPP", "APP_TO_APP", "CLOSE",
-                        "TEST_OPEN", "TEST_PROTECTED", "CONTROL_AUDIO",
-                        "CONTROL_DISPLAY", "CONTROL_INPUT_JOYSTICK",
-                        "CONTROL_INPUT_MEDIA_RECORDING",
-                        "CONTROL_INPUT_MEDIA_PLAYBACK", "CONTROL_INPUT_TV",
-                        "CONTROL_POWER", "READ_APP_STATUS", "READ_CURRENT_CHANNEL",
-                        "READ_INPUT_DEVICE_LIST", "READ_NETWORK_STATE",
-                        "READ_RUNNING_APPS", "READ_TV_CHANNEL_LIST",
-                        "WRITE_NOTIFICATION_TOAST", "READ_POWER_STATE",
-                        "READ_COUNTRY_INFO", "CONTROL_MOUSE_AND_KEYBOARD",
-                        "CONTROL_INPUT_TEXT"
-                    ],
-                    "serial": "2f930e2d2cfe083771f68e4fe7bb07"
-                },
-                "permissions": [
-                    "LAUNCH", "LAUNCH_WEBAPP", "APP_TO_APP", "CLOSE",
-                    "TEST_OPEN", "TEST_PROTECTED", "CONTROL_AUDIO",
-                    "CONTROL_DISPLAY", "CONTROL_INPUT_JOYSTICK",
-                    "CONTROL_INPUT_MEDIA_RECORDING",
-                    "CONTROL_INPUT_MEDIA_PLAYBACK", "CONTROL_INPUT_TV",
-                    "CONTROL_POWER", "READ_APP_STATUS", "READ_CURRENT_CHANNEL",
-                    "READ_INPUT_DEVICE_LIST", "READ_NETWORK_STATE",
-                    "READ_RUNNING_APPS", "READ_TV_CHANNEL_LIST",
-                    "WRITE_NOTIFICATION_TOAST", "READ_POWER_STATE",
-                    "READ_COUNTRY_INFO", "CONTROL_MOUSE_AND_KEYBOARD",
-                    "CONTROL_INPUT_TEXT"
-                ],
-                "signatures": [{
-                    "signatureVersion": 1,
-                    "signature": "eyJhbGdvcml0aG0iOiJSU0EtU0hBMjU2Iiwia2V5SWQiOiJ0ZXN0LXNpZ25pbmctY2VydCIsInNpZ25hdHVyZVZlcnNpb24iOjF9.hrVRgjCwXVvE2OOSpDZ58hR+59aFNwYDyjQgKk3auukd7pcegmE2CzPCa0bJ0ZsRAcKkCTJrWo5iDzNhMBWRyaMOv5zWSrthlf7G128qvIlpMT0YNY+n/FaOHE73uLrS/g7swl3/qH/BGFG2Hu4RlL48eb3lLKqTt2xKHdCs6Cd4RMfJPYnzgvI4BNrFUKsjkcu+WD4OO2A27Pq1n50cMchmcaXadJhGrOqH5YmHdOCj5NSHzJYrsW0HPlpuAx/ECMeIZYDh6RMqaFM2DXzdKX9NmmyqzJ3o/0lkk/N97gfVRLW5hA29yeAwaCViZNCP8iC9aO0q9fQojoa7NQnAtw=="
-                }]
-            }
-        }
-    }
-
-    COMMANDS = {
-        "volumeUp": ("ssap://audio/volumeUp", {}),
-        "volumeDown": ("ssap://audio/volumeDown", {}),
-        "off": ("ssap://system/turnOff", {}),
-        "getVolume": ("ssap://audio/getVolume", {}),
-        "getSystemInfo": ("ssap://system/getSystemInfo", {}),
-    }
-
-    def __init__(self, name, ip, client_key, use_ssl=True):
-        self.name = name
-        self.ip = ip
-        self.client_key = client_key
-        self.use_ssl = use_ssl
-        self.ws = None
-        self.input_ws = None
-        self.msg_id = 0
-        self.connected = False
-
-    async def connect(self):
-        """Connect and register with the TV."""
-        protocol = "wss" if self.use_ssl else "ws"
-        port = 3001 if self.use_ssl else 3000
-        uri = f"{protocol}://{self.ip}:{port}"
-        ssl_context = get_ssl_context() if self.use_ssl else None
-
-        try:
-            self.ws = await asyncio.wait_for(
-                websockets.connect(uri, ssl=ssl_context, close_timeout=2),
-                timeout=5
-            )
-
-            # Register
-            import copy
-            handshake = copy.deepcopy(self.HANDSHAKE)
-            if self.client_key:
-                handshake["payload"]["client-key"] = self.client_key
-
-            await self.ws.send(json.dumps(handshake))
-
-            # Wait for registration
-            response = await asyncio.wait_for(self.ws.recv(), timeout=5)
-            data = json.loads(response)
-
-            if data.get("type") == "registered":
-                self.connected = True
-                # Get input socket for button commands
-                await self._connect_input_socket()
-                return True
-            else:
-                raise Exception(f"Registration failed: {data}")
-
-        except Exception as e:
-            self.connected = False
-            raise
-
-    async def _connect_input_socket(self):
-        """Connect to the pointer input socket for button commands."""
-        try:
-            response = await self.send_command("ssap://com.webos.service.networkinput/getPointerInputSocket")
-            socket_path = response.get("payload", {}).get("socketPath")
-
-            if socket_path:
-                ssl_context = get_ssl_context() if self.use_ssl else None
-                self.input_ws = await websockets.connect(socket_path, ssl=ssl_context)
-        except Exception as e:
-            print(f"Warning: Could not connect input socket: {e}", file=sys.stderr)
-
-    async def _refresh_input_socket(self):
-        """Refresh the input socket (TV can close it while main socket stays open)."""
-        if self.input_ws:
-            try:
-                await self.input_ws.close()
-            except Exception:
-                pass
-            self.input_ws = None
-        await self._connect_input_socket()
-
-    async def keepalive_ping(self):
-        """Lightweight keepalive to detect dead connection. Returns True if still connected."""
-        try:
-            await self.send_command("ssap://com.webos.service.connectionmanager/getinfo")
-            return True
-        except Exception:
-            return False
-
-    async def _get_connected_mac(self):
-        """Get MAC address of the connected network interface (wifi or wired)."""
-        try:
-            info = await self.send_command("ssap://com.webos.service.connectionmanager/getinfo")
-            payload = info.get("payload") or {}
-            wifi_mac = (payload.get("wifiInfo") or {}).get("macAddress")
-            wired_mac = (payload.get("wiredInfo") or {}).get("macAddress")
-            try:
-                status = await self.send_command("ssap://com.webos.service.connectionmanager/getStatus")
-                sp = (status.get("payload") or {})
-                wifi_connected = (sp.get("wifi") or {}).get("state") == "connected" or (sp.get("wifiInfo") or {}).get("state") == "connected" or sp.get("isConnected") is True
-                wired_connected = (sp.get("wired") or {}).get("state") == "connected"
-                if wired_connected and wired_mac:
-                    return _normalize_mac(wired_mac)
-                if wifi_connected and wifi_mac:
-                    return _normalize_mac(wifi_mac)
-            except Exception:
-                pass
-            return _normalize_mac(wired_mac or wifi_mac)
-        except Exception:
-            return None
-
-
-def _normalize_mac(mac):
-    """Normalize MAC to AA:BB:CC:DD:EE:FF format."""
-    if not mac:
+def _request_args(request: JsonDict) -> list[str] | None:
+    args = request.get("args", [])
+    if not isinstance(args, list):
         return None
-    clean = mac.replace(":", "").replace("-", "").replace(" ", "").upper()
-    if len(clean) != 12 or not all(c in "0123456789ABCDEF" for c in clean):
-        return None
-    return ":".join(clean[i:i+2] for i in range(0, 12, 2))
+    return [arg for arg in args if isinstance(arg, str)]
 
-    async def send_command(self, uri, payload=None):
-        """Send a command to the TV."""
-        if not self.ws or not self.connected:
-            raise Exception("Not connected")
 
-        self.msg_id += 1
-        msg = {
-            "type": "request",
-            "id": f"cmd_{self.msg_id}",
-            "uri": uri,
-            "payload": payload or {}
-        }
-        await self.ws.send(json.dumps(msg))
-        response = await asyncio.wait_for(self.ws.recv(), timeout=3)
-        return json.loads(response)
+async def _write_json_response(writer: asyncio.StreamWriter, response: JsonDict) -> None:
+    writer.write((json.dumps(response) + "\n").encode())
+    await writer.drain()
 
-    async def send_button(self, button):
-        """Send a button press."""
-        if not self.input_ws:
-            # Try to reconnect input socket
-            await self._connect_input_socket()
 
-        if not self.input_ws:
-            raise Exception("Input socket not available")
+class DaemonTVConnection(TVConnection):
+    """Persistent TV connection with daemon command dispatch."""
 
-        cmd = f"type:button\nname:{button.upper()}\n\n"
-        await self.input_ws.send(cmd)
+    async def _execute_send_button(self, args: list[str] | None) -> JsonDict:
+        button = args[0] if args else "ENTER"
+        await self.send_button(button)
         return {"success": True}
 
-    async def execute(self, command, args=None):
-        """Execute a command."""
+    async def _execute_mute(self, args: list[str] | None) -> JsonDict:
+        mute_value = True
+        if args and args[0].lower() in ("false", "0", "off"):
+            mute_value = False
+        result = await self.send_command("ssap://audio/setMute", {"mute": mute_value})
+        return {"success": True, "result": result, "muted": mute_value}
+
+    async def _execute_power_on(self, _args: list[str] | None) -> JsonDict:
+        return await self.wake_on_lan()
+
+    def _execute_wake_streaming_device(self, _args: list[str] | None) -> JsonDict:
+        config = load_config()
+        device = as_streaming_device(config.get("streaming_device"))
+        if not device:
+            return {"success": False, "error": "No streaming device configured"}
+        wake_streaming_device(device)
+        return {"success": True, "message": "Wake sent"}
+
+    def _save_mac_to_config(self, mac: str) -> JsonDict:
+        config = load_config()
+        tvs = json_dict_get_dict(config, "tvs")
+        if tvs is None:
+            tvs = {}
+            config["tvs"] = tvs
+        tv = json_dict_get_dict(tvs, self.name)
+        if tv is None:
+            tv = {}
+            tvs[self.name] = tv
+        tv["mac"] = mac
+        save_config(config)
+        return {"success": True, "message": f"MAC address saved: {mac}"}
+
+    async def _execute_fetch_mac(self, _args: list[str] | None) -> JsonDict:
+        mac = await self.get_mac()
+        if not mac:
+            return {"success": False, "error": "Could not get MAC from TV"}
+        return self._save_mac_to_config(mac)
+
+    async def _execute_builtin_command(self, command: str) -> JsonDict:
+        uri, payload = self.COMMANDS[command]
+        result = await self.send_command(uri, payload)
+        return {"success": True, "result": result}
+
+    async def _run_execute(self, command: str, args: list[str] | None) -> JsonDict:
+        dispatch: dict[str, ExecuteHandler] = {
+            "sendButton": self._execute_send_button,
+            "mute": self._execute_mute,
+            "on": self._execute_power_on,
+            "wake_streaming_device": self._execute_wake_streaming_device,
+            "fetch_mac": self._execute_fetch_mac,
+        }
+        handler = dispatch.get(command)
+        if handler is not None:
+            result = handler(args)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+        if command in self.COMMANDS:
+            return await self._execute_builtin_command(command)
+        return {"success": False, "error": f"Unknown command: {command}"}
+
+    async def execute(self, command: str, args: list[str] | None = None) -> JsonDict:
         try:
-            if command == "sendButton":
-                button = args[0] if args else "ENTER"
-                return await self.send_button(button)
-
-            elif command == "mute":
-                # Discrete mute (true) or unmute (false)
-                mute_value = True  # default to mute
-                if args and args[0].lower() in ("false", "0", "off"):
-                    mute_value = False
-                result = await self.send_command("ssap://audio/setMute", {"mute": mute_value})
-                return {"success": True, "result": result, "muted": mute_value}
-
-            elif command == "on":
-                # Power on requires Wake-on-LAN (optionally wake streaming device too)
-                return await self.wake_on_lan()
-
-            elif command == "wake_streaming_device":
-                config = load_config()
-                device = config.get("streaming_device")
-                if not device:
-                    return {"success": False, "error": "No streaming device configured"}
-                _wake_streaming_device(device)
-                return {"success": True, "message": "Wake sent"}
-
-            elif command == "fetch_mac":
-                mac = await self._get_connected_mac()
-                if mac:
-                    config = load_config()
-                    if "tvs" not in config:
-                        config["tvs"] = {}
-                    if self.name not in config["tvs"]:
-                        config["tvs"][self.name] = {}
-                    config["tvs"][self.name]["mac"] = mac
-                    save_config(config)
-                    return {"success": True, "message": f"MAC address saved: {mac}"}
-                return {"success": False, "error": "Could not get MAC from TV"}
-
-            elif command in self.COMMANDS:
-                uri, payload = self.COMMANDS[command]
-                result = await self.send_command(uri, payload)
-                return {"success": True, "result": result}
-
-            else:
-                return {"success": False, "error": f"Unknown command: {command}"}
+            return await self._run_execute(command, args)
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    async def wake_on_lan(self):
-        """Send Wake-on-LAN magic packet to turn on TV. Optionally wake streaming device too."""
-        import socket
-
+    async def wake_on_lan(self) -> JsonDict:
         config = load_config()
-        tv_config = config.get("tvs", {}).get(self.name, {})
-        mac = tv_config.get("mac")
+        tvs = json_dict_get_dict(config, "tvs") or {}
+        tv_config = json_dict_get_dict(tvs, self.name) or {}
+        mac = json_dict_get_str(tv_config, "mac")
 
         if not mac:
             try:
-                await self.send_command("ssap://system/getSystemInfo")
+                _ = await self.send_command("ssap://system/getSystemInfo")
                 return {"success": True, "message": "TV is already on"}
             except Exception:
-                return {"success": False, "error": "MAC address not saved. Turn TV on manually first, then use 'Auth' to save MAC."}
+                return {
+                    "success": False,
+                    "error": (
+                        "MAC address not saved. Turn TV on manually first, "
+                        "then use 'Auth' to save MAC."
+                    ),
+                }
 
         try:
-            _wol_send(mac, None)
-            # Optionally wake streaming device when powering on TV
-            if config.get("wake_streaming_on_power_on") and config.get("streaming_device"):
-                _wake_streaming_device(config["streaming_device"])
+            wol_send(mac, None)
+            if config.get("wake_streaming_on_power_on"):
+                device = as_streaming_device(config.get("streaming_device"))
+                if device:
+                    wake_streaming_device(device)
             return {"success": True, "message": "Wake-on-LAN packet sent"}
         except Exception as e:
             return {"success": False, "error": f"WoL failed: {e}"}
 
 
-def _wol_send(mac, broadcast_ip=None):
-    """Send Wake-on-LAN magic packet. broadcast_ip: optional subnet broadcast (e.g. 10.0.0.255)."""
-    import socket
-    mac_clean = mac.replace(":", "").replace("-", "").replace(" ", "")
-    mac_bytes = bytes.fromhex(mac_clean)
-    magic_packet = b'\xff' * 6 + mac_bytes * 16
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.sendto(magic_packet, ('255.255.255.255', 9))
-    if broadcast_ip and str(broadcast_ip).strip():
-        for port in (9, 7):
-            try:
-                sock.sendto(magic_packet, (str(broadcast_ip).strip(), port))
-            except Exception:
-                pass
-    sock.close()
+def _tv_cfg_field(tv_cfg: JsonDict | None, key: str) -> str | None:
+    return json_dict_get_str(tv_cfg, key) if tv_cfg else None
 
 
-def _wake_streaming_device(device):
-    """Wake a streaming device (WoL, ADB, or Roku). device is dict with type and params."""
-    if not device or not isinstance(device, dict):
+def _connect_params_from_request(
+    request: JsonDict,
+) -> tuple[str | None, str | None, bool, str | None, str | None, str | None]:
+    name = json_dict_get_str(request, "name")
+    ip = json_dict_get_str(request, "ip")
+    use_ssl_raw = request.get("ssl", True)
+    use_ssl = use_ssl_raw if isinstance(use_ssl_raw, bool) else True
+
+    config = load_config()
+    tvs = json_dict_get_dict(config, "tvs") or {}
+    tv_cfg = json_dict_get_dict(tvs, name) if name else None
+
+    return (
+        name,
+        ip,
+        use_ssl,
+        _tv_cfg_field(tv_cfg, "client_key"),
+        _tv_cfg_field(tv_cfg, "ssl_cert_pem"),
+        _tv_cfg_field(tv_cfg, "ssl_server_name"),
+    )
+
+
+def _persist_ssl_pin(name: str | None, tv: DaemonTVConnection) -> None:
+    if not name or not (tv.ssl_cert_pem or tv.ssl_server_name):
         return
-    kind = device.get("type", "").lower()
-    if kind == "wol":
-        mac = device.get("mac")
-        if mac:
-            _wol_send(mac, device.get("broadcast_ip"))
-    elif kind == "adb":
-        ip = device.get("ip")
-        port = device.get("port", 5555)
-        if ip:
-            import subprocess
+
+    config = load_config()
+    tvs = json_dict_get_dict(config, "tvs") or {}
+    tv_cfg = json_dict_get_dict(tvs, name)
+    if tv_cfg is None:
+        return
+
+    if tv.ssl_cert_pem:
+        tv_cfg["ssl_cert_pem"] = tv.ssl_cert_pem
+    if tv.ssl_server_name:
+        tv_cfg["ssl_server_name"] = tv.ssl_server_name
+    save_config(config)
+
+
+async def _disconnect_keepalive_tv(daemon: Daemon) -> None:
+    if daemon.tv:
+        await daemon.tv.close()
+        daemon.tv = None
+
+
+async def _refresh_input_socket_with_retry(daemon: Daemon) -> None:
+    if not daemon.tv or not daemon.tv.connected:
+        return
+    try:
+        await daemon.tv.refresh_input_socket()
+    except Exception as e:
+        print(f"Keepalive: refresh input socket failed: {e}", file=sys.stderr)
+        await asyncio.sleep(3)
+        if daemon.tv and daemon.tv.connected:
             try:
-                subprocess.run(["adb", "connect", f"{ip}:{port}"], capture_output=True, timeout=10)
-                subprocess.run(["adb", "-s", f"{ip}:{port}", "shell", "input", "keyevent", "KEYCODE_WAKEUP"], capture_output=True, timeout=10)
-            except Exception:
-                pass
-    elif kind == "roku":
-        ip = device.get("ip")
-        if ip:
-            import socket
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(3)
-                s.connect((ip, 8060))
-                s.sendall(f"POST /keypress/PowerOn HTTP/1.1\r\nHost: {ip}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".encode())
-                s.close()
+                await daemon.tv.refresh_input_socket()
             except Exception:
                 pass
 
-    async def close(self):
-        """Close connections."""
-        self.connected = False
-        if self.input_ws:
-            try:
-                await self.input_ws.close()
-            except Exception:
-                pass
-            self.input_ws = None
-        if self.ws:
-            try:
-                await self.ws.close()
-            except Exception:
-                pass
-            self.ws = None
 
-
-async def keepalive_loop(daemon, interval_secs=25):
+async def keepalive_loop(daemon: Daemon, interval_secs: int = 25) -> None:
     """Ping TV every interval_secs while connected; refresh input socket; on failure disconnect."""
     while daemon.running and daemon.tv and daemon.tv.connected:
         await asyncio.sleep(interval_secs)
-        if not daemon.tv or not daemon.tv.connected:
+        tv = daemon.tv
+        if not tv or not tv.connected:
             break
-        ok = await daemon.tv.keepalive_ping()
+        ok = await tv.keepalive_ping()
         if not ok:
-            await daemon.tv.close()
-            daemon.tv = None
+            await _disconnect_keepalive_tv(daemon)
             break
-        # Refresh input socket so button commands don't go stale
-        try:
-            await daemon.tv._refresh_input_socket()
-        except Exception as e:
-            print(f"Keepalive: refresh input socket failed: {e}", file=sys.stderr)
-            await asyncio.sleep(3)
-            if daemon.tv and daemon.tv.connected:
-                try:
-                    await daemon.tv._refresh_input_socket()
-                except Exception:
-                    pass
+        await _refresh_input_socket_with_retry(daemon)
 
 
 class Daemon:
     """Daemon that handles commands from the widget."""
 
-    def __init__(self):
+    tv: DaemonTVConnection | None
+    running: bool
+    _keepalive_task: asyncio.Task[None] | None
+
+    def __init__(self) -> None:
         self.tv = None
         self.running = False
         self._keepalive_task = None
 
-    async def handle_client(self, reader, writer):
+    async def _cancel_keepalive_task(self) -> None:
+        task = self._keepalive_task
+        self._keepalive_task = None
+        if not task:
+            return
+        _ = task.cancel()
+        _ = await asyncio.gather(task, return_exceptions=True)
+
+    async def _close_tv_connection(self) -> None:
+        if self.tv:
+            await self.tv.close()
+            self.tv = None
+
+    async def _handle_connect(self, request: JsonDict) -> JsonDict:
+        name, ip, use_ssl, client_key, ssl_cert_pem, ssl_server_name = _connect_params_from_request(
+            request
+        )
+
+        await self._cancel_keepalive_task()
+        await self._close_tv_connection()
+
+        self.tv = DaemonTVConnection(
+            name or "",
+            ip or "",
+            client_key,
+            use_ssl,
+            ssl_cert_pem,
+            ssl_server_name,
+        )
+        try:
+            await self.tv.connect()
+            _persist_ssl_pin(name, self.tv)
+            self._keepalive_task = asyncio.create_task(keepalive_loop(self))
+            return {"success": True, "message": "Connected"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def _handle_disconnect(self, _request: JsonDict) -> JsonDict:
+        await self._cancel_keepalive_task()
+        await self._close_tv_connection()
+        return {"success": True}
+
+    def _handle_status(self, _request: JsonDict) -> JsonDict:
+        return {"success": True, "connected": self.tv.connected if self.tv else False}
+
+    def _handle_getconfig(self, _request: JsonDict) -> JsonDict:
+        return {"success": True, "config": load_config()}
+
+    def _handle_set_streaming_device(self, request: JsonDict) -> JsonDict:
+        config = load_config()
+        config["streaming_device"] = request.get("device")
+        save_config(config)
+        return {"success": True}
+
+    def _handle_set_wake_streaming_on_power_on(self, request: JsonDict) -> JsonDict:
+        enabled = request.get("enabled", False)
+        config = load_config()
+        config["wake_streaming_on_power_on"] = bool(enabled)
+        save_config(config)
+        return {"success": True}
+
+    def _handle_set_mac(self, request: JsonDict) -> JsonDict:
+        mac_raw = json_dict_get_str(request, "mac")
+        mac = (mac_raw or "").strip()
+        if not mac or len(mac.replace(":", "").replace("-", "").replace(" ", "")) != 12:
+            return {"success": False, "error": "Invalid MAC address"}
+
+        name = json_dict_get_str(request, "name")
+        config = load_config()
+        tvs = json_dict_get_dict(config, "tvs")
+        if not name or tvs is None or name not in tvs:
+            return {"success": False, "error": "TV not found"}
+
+        tv_cfg = json_dict_get_dict(tvs, name)
+        if tv_cfg is None:
+            tv_cfg = {}
+            tvs[name] = tv_cfg
+        tv_cfg["mac"] = normalize_mac(mac) or mac
+        save_config(config)
+        saved_mac = json_dict_get_str(tv_cfg, "mac") or mac
+        return {"success": True, "message": f"MAC set to {saved_mac}"}
+
+    def _handle_stop(self, _request: JsonDict) -> JsonDict:
+        self.running = False
+        return {"success": True, "message": "Stopping daemon"}
+
+    async def _dispatch_client_command(self, cmd: str, request: JsonDict) -> JsonDict:
+        handlers: dict[str, ClientCommandHandler] = {
+            "connect": self._handle_connect,
+            "disconnect": self._handle_disconnect,
+            "status": self._handle_status,
+            "getconfig": self._handle_getconfig,
+            "set_streaming_device": self._handle_set_streaming_device,
+            "set_wake_streaming_on_power_on": self._handle_set_wake_streaming_on_power_on,
+            "set_mac": self._handle_set_mac,
+            "stop": self._handle_stop,
+        }
+        handler = handlers.get(cmd)
+        if handler is not None:
+            result = handler(request)
+            if inspect.isawaitable(result):
+                return await result
+            return result
+        if self.tv and self.tv.connected:
+            return await self.tv.execute(cmd, _request_args(request))
+        return {"success": False, "error": "Not connected to TV"}
+
+    async def handle_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         """Handle a command from the widget."""
         try:
             data = await asyncio.wait_for(reader.readline(), timeout=5)
             if not data:
                 return
 
-            request = json.loads(data.decode().strip())
-            cmd = request.get("cmd")
-            args = request.get("args", [])
-
-            if cmd == "connect":
-                # Connect to TV
-                name = request.get("name")
-                ip = request.get("ip")
-                use_ssl = request.get("ssl", True)
-
-                config = load_config()
-                client_key = config.get("tvs", {}).get(name, {}).get("client_key")
-
-                if self._keepalive_task:
-                    self._keepalive_task.cancel()
-                    try:
-                        await self._keepalive_task
-                    except asyncio.CancelledError:
-                        pass
-                    self._keepalive_task = None
-                if self.tv:
-                    await self.tv.close()
-                    self.tv = None
-
-                self.tv = TVConnection(name, ip, client_key, use_ssl)
-                try:
-                    await self.tv.connect()
-                    self._keepalive_task = asyncio.create_task(keepalive_loop(self))
-                    response = {"success": True, "message": "Connected"}
-                except Exception as e:
-                    response = {"success": False, "error": str(e)}
-
-            elif cmd == "disconnect":
-                if self._keepalive_task:
-                    self._keepalive_task.cancel()
-                    try:
-                        await self._keepalive_task
-                    except asyncio.CancelledError:
-                        pass
-                    self._keepalive_task = None
-                if self.tv:
-                    await self.tv.close()
-                    self.tv = None
-                response = {"success": True}
-
-            elif cmd == "status":
-                response = {"success": True, "connected": self.tv.connected if self.tv else False}
-
-            elif cmd == "getconfig":
-                response = {"success": True, "config": load_config()}
-
-            elif cmd == "set_streaming_device":
-                device = request.get("device")
-                config = load_config()
-                config["streaming_device"] = device
-                save_config(config)
-                response = {"success": True}
-
-            elif cmd == "set_wake_streaming_on_power_on":
-                enabled = request.get("enabled", False)
-                config = load_config()
-                config["wake_streaming_on_power_on"] = bool(enabled)
-                save_config(config)
-                response = {"success": True}
-
-            elif cmd == "set_mac":
-                mac = request.get("mac", "").strip()
-                if not mac or len(mac.replace(":", "").replace("-", "").replace(" ", "")) != 12:
-                    response = {"success": False, "error": "Invalid MAC address"}
-                else:
-                    config = load_config()
-                    name = request.get("name")
-                    if name and name in config.get("tvs", {}):
-                        config["tvs"][name]["mac"] = _normalize_mac(mac) or mac
-                        save_config(config)
-                        response = {"success": True, "message": f"MAC set to {config['tvs'][name]['mac']}"}
-                    else:
-                        response = {"success": False, "error": "TV not found"}
-
-            elif cmd == "stop":
-                self.running = False
-                response = {"success": True, "message": "Stopping daemon"}
-
-            elif self.tv and self.tv.connected:
-                response = await self.tv.execute(cmd, args)
-
+            request = parse_json(data.decode().strip())
+            cmd = json_dict_get_str(request, "cmd")
+            if not cmd:
+                response: JsonDict = {"success": False, "error": "Missing cmd"}
             else:
-                response = {"success": False, "error": "Not connected to TV"}
+                response = await self._dispatch_client_command(cmd, request)
 
-            writer.write((json.dumps(response) + "\n").encode())
-            await writer.drain()
-
+            await _write_json_response(writer, response)
         except asyncio.TimeoutError:
             pass
         except Exception as e:
             try:
-                writer.write((json.dumps({"success": False, "error": str(e)}) + "\n").encode())
-                await writer.drain()
-            except:
+                await _write_json_response(writer, {"success": False, "error": str(e)})
+            except Exception:
                 pass
         finally:
             writer.close()
@@ -541,7 +414,7 @@ class Daemon:
             SOCKET_PATH.unlink()
 
         # Write PID file
-        PID_FILE.write_text(str(os.getpid()))
+        _ = PID_FILE.write_text(str(os.getpid()))
 
         self.running = True
         server = await asyncio.start_unix_server(self.handle_client, path=str(SOCKET_PATH))
@@ -564,12 +437,11 @@ class Daemon:
             PID_FILE.unlink()
 
 
-async def send_to_daemon(request):
+async def send_to_daemon(request: JsonDict) -> JsonDict:
     """Send a request to the daemon."""
     try:
         reader, writer = await asyncio.wait_for(
-            asyncio.open_unix_connection(path=str(SOCKET_PATH)),
-            timeout=1
+            asyncio.open_unix_connection(path=str(SOCKET_PATH)), timeout=1
         )
         writer.write((json.dumps(request) + "\n").encode())
         await writer.drain()
@@ -578,7 +450,7 @@ async def send_to_daemon(request):
         writer.close()
         await writer.wait_closed()
 
-        return json.loads(response.decode().strip())
+        return parse_json(response.decode().strip())
     except FileNotFoundError:
         return {"success": False, "error": "Daemon not running"}
     except Exception as e:
@@ -602,109 +474,144 @@ def is_daemon_running():
         return False
 
 
-def main():
+CliHandler: TypeAlias = Callable[[], None]
+
+
+def _print_json_response(result: JsonDict) -> None:
+    print(json.dumps(result))
+
+
+def _daemon_cli_request(cmd: str, args: list[str] | None = None, **extra: JsonValue) -> JsonDict:
+    request: JsonDict = {"cmd": cmd, **extra}
+    if args:
+        request["args"] = cast(JsonValue, args)
+    return request
+
+
+def _print_usage() -> None:
+    print("Usage: lgtv_daemon.py <command> [args...]")
+    print("Commands: start, stop, status, connect, send, ...")
+
+
+def _cmd_start() -> None:
+    if is_daemon_running():
+        _print_json_response({"success": False, "error": "Daemon already running"})
+        sys.exit(0)
+
+    if os.fork() > 0:
+        sys.exit(0)
+
+    os.setsid()
+    if os.fork() > 0:
+        sys.exit(0)
+
+    sys.stdin = open(os.devnull)
+    sys.stdout = open(os.devnull, "w")
+
+    daemon = Daemon()
+    asyncio.run(daemon.run())
+
+
+def _cmd_stop() -> None:
+    result = asyncio.run(send_to_daemon({"cmd": "stop"}))
+    _print_json_response(result)
+
+
+def _cmd_status() -> None:
+    if not is_daemon_running():
+        _print_json_response({"success": True, "running": False})
+        return
+    result = asyncio.run(send_to_daemon({"cmd": "status"}))
+    result["running"] = True
+    _print_json_response(result)
+
+
+def _cmd_connect() -> None:
+    if len(sys.argv) < 4:
+        _print_json_response({"success": False, "error": "Usage: connect <name> <ip> [--no-ssl]"})
+        sys.exit(1)
+
+    request: JsonDict = {
+        "cmd": "connect",
+        "name": sys.argv[2],
+        "ip": sys.argv[3],
+        "ssl": "--no-ssl" not in sys.argv,
+    }
+    _print_json_response(asyncio.run(send_to_daemon(request)))
+
+
+def _cmd_send() -> None:
+    if len(sys.argv) < 3:
+        _print_json_response({"success": False, "error": "Usage: send <command> [args...]"})
+        sys.exit(1)
+
+    args = sys.argv[3].split(",") if len(sys.argv) > 3 and sys.argv[3] else []
+    _print_json_response(asyncio.run(send_to_daemon(_daemon_cli_request(sys.argv[2], args))))
+
+
+def _cmd_getconfig() -> None:
+    if not is_daemon_running():
+        _print_json_response({"success": False, "error": "Daemon not running"})
+        return
+    _print_json_response(asyncio.run(send_to_daemon({"cmd": "getconfig"})))
+
+
+def _cmd_setconfig() -> None:
+    if len(sys.argv) < 4:
+        _print_json_response({"success": False, "error": "Usage: setconfig <key> <value>"})
+        sys.exit(1)
+
+    key = sys.argv[2]
+    val = sys.argv[3]
+    result: JsonDict
+    if key == "streaming_device":
+        device = parse_json(val) if val else None
+        request: JsonDict = {"cmd": "set_streaming_device", "device": device}
+        result = asyncio.run(send_to_daemon(request))
+    elif key == "wake_streaming_on_power_on":
+        request = {"cmd": "set_wake_streaming_on_power_on"}
+        request["enabled"] = val.lower() == "true"
+        result = asyncio.run(send_to_daemon(request))
+    else:
+        result = {"success": False, "error": "Unknown config key"}
+    _print_json_response(result)
+
+
+def _cmd_setmac() -> None:
+    if len(sys.argv) < 4:
+        _print_json_response({"success": False, "error": "Usage: setmac <name> <mac>"})
+        sys.exit(1)
+
+    request: JsonDict = {"cmd": "set_mac", "name": sys.argv[2], "mac": sys.argv[3]}
+    _print_json_response(asyncio.run(send_to_daemon(request)))
+
+
+def _cmd_direct(command: str) -> None:
+    args = sys.argv[2].split(",") if len(sys.argv) > 2 and sys.argv[2] else []
+    _print_json_response(asyncio.run(send_to_daemon(_daemon_cli_request(command, args))))
+
+
+def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: lgtv_daemon.py <command> [args...]")
-        print("Commands: start, stop, status, connect, send, ...")
+        _print_usage()
         sys.exit(1)
 
     command = sys.argv[1]
-
-    if command == "start":
-        if is_daemon_running():
-            print(json.dumps({"success": False, "error": "Daemon already running"}))
-            sys.exit(0)
-
-        # Fork to background
-        if os.fork() > 0:
-            sys.exit(0)
-
-        os.setsid()
-        if os.fork() > 0:
-            sys.exit(0)
-
-        # Redirect stdio
-        sys.stdin = open(os.devnull, 'r')
-        sys.stdout = open(os.devnull, 'w')
-
-        # Run daemon
-        daemon = Daemon()
-        asyncio.run(daemon.run())
-
-    elif command == "stop":
-        result = asyncio.run(send_to_daemon({"cmd": "stop"}))
-        print(json.dumps(result))
-
-    elif command == "status":
-        if not is_daemon_running():
-            print(json.dumps({"success": True, "running": False}))
-        else:
-            result = asyncio.run(send_to_daemon({"cmd": "status"}))
-            result["running"] = True
-            print(json.dumps(result))
-
-    elif command == "connect":
-        if len(sys.argv) < 4:
-            print(json.dumps({"success": False, "error": "Usage: connect <name> <ip> [--no-ssl]"}))
-            sys.exit(1)
-
-        name = sys.argv[2]
-        ip = sys.argv[3]
-        use_ssl = "--no-ssl" not in sys.argv
-
-        result = asyncio.run(send_to_daemon({
-            "cmd": "connect",
-            "name": name,
-            "ip": ip,
-            "ssl": use_ssl
-        }))
-        print(json.dumps(result))
-
-    elif command == "send":
-        if len(sys.argv) < 3:
-            print(json.dumps({"success": False, "error": "Usage: send <command> [args...]"}))
-            sys.exit(1)
-
-        cmd = sys.argv[2]
-        args = sys.argv[3].split(",") if len(sys.argv) > 3 and sys.argv[3] else []
-
-        result = asyncio.run(send_to_daemon({"cmd": cmd, "args": args}))
-        print(json.dumps(result))
-
-    elif command == "getconfig":
-        if not is_daemon_running():
-            print(json.dumps({"success": False, "error": "Daemon not running"}))
-        else:
-            result = asyncio.run(send_to_daemon({"cmd": "getconfig"}))
-            print(json.dumps(result))
-
-    elif command == "setconfig":
-        if len(sys.argv) < 4:
-            print(json.dumps({"success": False, "error": "Usage: setconfig <key> <value>"}))
-            sys.exit(1)
-        key = sys.argv[2]
-        val = sys.argv[3]
-        if key == "streaming_device":
-            device = json.loads(val) if val else None
-            result = asyncio.run(send_to_daemon({"cmd": "set_streaming_device", "device": device}))
-        elif key == "wake_streaming_on_power_on":
-            result = asyncio.run(send_to_daemon({"cmd": "set_wake_streaming_on_power_on", "enabled": val.lower() == "true"}))
-        else:
-            result = {"success": False, "error": "Unknown config key"}
-        print(json.dumps(result))
-
-    elif command == "setmac":
-        if len(sys.argv) < 4:
-            print(json.dumps({"success": False, "error": "Usage: setmac <name> <mac>"}))
-            sys.exit(1)
-        result = asyncio.run(send_to_daemon({"cmd": "set_mac", "name": sys.argv[2], "mac": sys.argv[3]}))
-        print(json.dumps(result))
-
+    handlers: dict[str, CliHandler] = {
+        "start": _cmd_start,
+        "stop": _cmd_stop,
+        "status": _cmd_status,
+        "connect": _cmd_connect,
+        "send": _cmd_send,
+        "getconfig": _cmd_getconfig,
+        "setconfig": _cmd_setconfig,
+        "setmac": _cmd_setmac,
+    }
+    handler = handlers.get(command)
+    if handler is not None:
+        handler()
     else:
-        # Direct command to daemon
-        args = sys.argv[2].split(",") if len(sys.argv) > 2 and sys.argv[2] else []
-        result = asyncio.run(send_to_daemon({"cmd": command, "args": args}))
-        print(json.dumps(result))
+        _cmd_direct(command)
 
 
 if __name__ == "__main__":
