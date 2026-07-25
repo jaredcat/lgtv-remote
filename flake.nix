@@ -43,6 +43,9 @@
           imagemagick
           cargo-tauri
           cargo-outdated
+          ruff
+          nodejs_22
+          pnpm
         ];
 
         runtimeLibs = with pkgs; [
@@ -65,6 +68,10 @@
             echo "  cargo tauri build  - Build for production"
             echo "  cargo outdated     - Check for outdated dependencies"
             echo "  ./generate-icons.sh - Generate icon files"
+            echo "  pnpm lint          - Lint JS/TS, Python, and Rust"
+            echo "  pnpm format:js     - Format JS/TS with Biome"
+            echo "  pnpm format:py     - Format Python with Ruff"
+            echo "  pnpm format:rust   - Format Rust with rustfmt"
             echo ""
             ${pkgs.lib.optionalString (!pkgs.stdenv.isLinux) ''
               echo "Note: nix build .#default is Linux-only. On macOS use cargo tauri build."

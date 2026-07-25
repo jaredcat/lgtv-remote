@@ -1,0 +1,16 @@
+{
+  "include": [
+    "lgtv",
+    "decky",
+    "plasmoid/package/contents/code"
+  ],
+  "exclude": [
+    "decky/py_modules",
+    "decky/lgtv",
+    "plasmoid/package/contents/lgtv",
+    "**/node_modules",
+    "src-tauri/target"
+  ],
+  "extraPaths": [".", "decky/py_modules", "decky/stubs"],
+  "pythonVersion": "3.10"
+}

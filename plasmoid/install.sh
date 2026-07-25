@@ -7,6 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PACKAGE_DIR="$SCRIPT_DIR/package"
 PLASMOID_ID="com.codekitties.lgtv.remote"
 
+rm -rf "$PACKAGE_DIR/contents/lgtv"
+cp -r "$SCRIPT_DIR/../lgtv" "$PACKAGE_DIR/contents/lgtv"
+
 echo "Installing LG TV Remote Plasma widget..."
 
 # Check for Python websockets module

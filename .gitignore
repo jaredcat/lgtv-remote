@@ -3,6 +3,7 @@ result
 src-tauri/target/
 src-tauri/gen/
 dist/
+node_modules/
 
 # IDE
 .idea/
@@ -16,3 +17,13 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Vendored / bundled Python (generated at setup or deploy)
+decky/py_modules/
+decky/lgtv/
+plasmoid/package/contents/lgtv/

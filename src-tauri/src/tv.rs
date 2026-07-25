@@ -1,7 +1,7 @@
 use futures_util::{SinkExt, StreamExt};
 use native_tls::TlsConnector;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -141,14 +141,10 @@ impl TvConnection {
 
             let connector = tokio_tungstenite::Connector::NativeTls(connector);
 
-            let (ws, _) = tokio_tungstenite::connect_async_tls_with_config(
-                uri,
-                None,
-                false,
-                Some(connector),
-            )
-            .await
-            .map_err(|e| format!("WebSocket connection failed: {}", e))?;
+            let (ws, _) =
+                tokio_tungstenite::connect_async_tls_with_config(uri, None, false, Some(connector))
+                    .await
+                    .map_err(|e| format!("WebSocket connection failed: {}", e))?;
 
             Ok(ws)
         } else {
@@ -245,10 +241,12 @@ impl TvConnection {
     }
 
     async fn connect_input_socket(&mut self) -> Result<(), String> {
-        let response = self.send_command(
-            "ssap://com.webos.service.networkinput/getPointerInputSocket",
-            None,
-        ).await?;
+        let response = self
+            .send_command(
+                "ssap://com.webos.service.networkinput/getPointerInputSocket",
+                None,
+            )
+            .await?;
 
         let socket_path = response["payload"]["socketPath"]
             .as_str()
@@ -279,7 +277,11 @@ impl TvConnection {
         }
     }
 
-    pub async fn send_command(&mut self, uri: &str, payload: Option<Value>) -> Result<Value, String> {
+    pub async fn send_command(
+        &mut self,
+        uri: &str,
+        payload: Option<Value>,
+    ) -> Result<Value, String> {
         let ws = self.ws.as_ref().ok_or("Not connected")?;
 
         self.msg_id += 1;
@@ -362,7 +364,8 @@ impl TvConnection {
     }
 
     pub async fn set_mute(&mut self, mute: bool) -> Result<CommandResult, String> {
-        self.send_command("ssap://audio/setMute", Some(json!({ "mute": mute }))).await?;
+        self.send_command("ssap://audio/setMute", Some(json!({ "mute": mute })))
+            .await?;
         Ok(CommandResult::ok())
     }
 
@@ -390,7 +393,8 @@ impl TvConnection {
 
     pub async fn get_network_info(&mut self) -> Result<Value, String> {
         // Get MAC addresses from getinfo endpoint
-        self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None).await
+        self.send_command("ssap://com.webos.service.connectionmanager/getinfo", None)
+            .await
     }
 
     /// Get connection status (which interface is connected).
@@ -415,7 +419,9 @@ impl TvConnection {
             log::debug!("connectionmanager/getStatus succeeded");
             return Ok(status);
         }
-        log::debug!("connectionmanager/getStatus failed, trying com.webos.service.wifi/getstatus...");
+        log::debug!(
+            "connectionmanager/getStatus failed, trying com.webos.service.wifi/getstatus..."
+        );
         // Fallback: com.webos.service.wifi/getstatus (lowercase per webOS OSE docs)
         let response = self
             .send_command("ssap://com.webos.service.wifi/getstatus", None)
@@ -561,7 +567,14 @@ pub async fn wake_adb(ip: &str, port: u16) -> Result<CommandResult, String> {
     }
 
     let output = Command::new("adb")
-        .args(["-s", &target, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+        .args([
+            "-s",
+            &target,
+            "shell",
+            "input",
+            "keyevent",
+            "KEYCODE_WAKEUP",
+        ])
         .output()
         .await
         .map_err(|e| format!("adb shell failed: {}", e))?;

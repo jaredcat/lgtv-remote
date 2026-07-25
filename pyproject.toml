@@ -1,0 +1,44 @@
+[project]
+name = "lgtv-remote"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    "decky/py_modules",
+    "decky/lgtv",
+    "plasmoid/package/contents/lgtv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501", "SIM105", "B904"]
+
+[tool.ruff.lint.per-file-ignores]
+"decky/main.py" = ["E402"]
+"plasmoid/package/contents/code/lgtv_daemon.py" = ["E402"]
+"plasmoid/package/contents/code/lgtv_remote.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pyright]
+pythonVersion = "3.10"
+stubPath = "decky/stubs"
+extraPaths = [".", "decky/py_modules", "decky/stubs"]
+exclude = [
+    "decky/py_modules",
+    "decky/lgtv",
+    "decky/stubs",
+    "plasmoid/package/contents/lgtv",
+]
+include = [
+    "lgtv/**/*.py",
+    "decky/**/*.py",
+    "plasmoid/package/contents/code/*.py",
+]
+
+[tool.basedpyright]
+# Stubs mirror Decky Loader's runtime API; keep loose typing out of the checker.
+ignore = ["decky/stubs"]
