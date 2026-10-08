@@ -12,6 +12,8 @@ on:
         required: true
       TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
         required: false
+      OP_SERVICE_ACCOUNT_TOKEN:
+        required: true
 
 jobs:
   build:
@@ -64,6 +66,48 @@ jobs:
           sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i.bak "s/version = \"[^\"]*\";/version = \"$VERSION\";/" flake.nix
           rm -f src-tauri/Cargo.toml.bak src-tauri/tauri.conf.json.bak flake.nix.bak
+
+      - name: Install 1Password CLI
+        if: matrix.platform == 'macos-latest'
+        uses: 1password/install-cli-action@v4
+
+      - name: Load macOS signing certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          set -euo pipefail
+          p12="$RUNNER_TEMP/lgtv-codesign.p12"
+          keychain="$RUNNER_TEMP/lgtv.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          op read --out-file "$p12" "op://lgtv-remote/lgtv-tray-remote-dev/p12"
+          p12_password="$(op read "op://lgtv-remote/lgtv-tray-remote-dev/password")"
+          p12_password="${p12_password%$'\n'}"
+          echo "::add-mask::$p12_password"
+          echo "::add-mask::$keychain_password"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -k "$keychain" -P "$p12_password" -f pkcs12 -T /usr/bin/codesign -A
+          # Do not call `security add-trusted-cert` here. On a GitHub runner it
+          # waits forever for an admin dialog. codesign does not need that trust
+          # to apply this identity.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security default-keychain -s "$keychain"
+
+          # Fail here instead of after the Rust build. Tauri invokes
+          # `codesign -s <identity>` with no --keychain flag.
+          echo 'int main(void){return 0;}' | clang -o "$RUNNER_TEMP/signme" -x c -
+          codesign --force -s "lgtv-tray-remote-dev" --options runtime "$RUNNER_TEMP/signme"
+          codesign --verify --strict "$RUNNER_TEMP/signme"
+          rm -f "$p12" "$RUNNER_TEMP/signme"
+
+          # APPLE_CERTIFICATE makes Tauri require an Apple-issued identity
+          # (Developer ID Application, Apple Development, ...). This certificate
+          # is self-signed, so pass only the identity name.
+          echo "APPLE_SIGNING_IDENTITY=lgtv-tray-remote-dev" >> "$GITHUB_ENV"
 
       - name: Build Tauri app
         env:

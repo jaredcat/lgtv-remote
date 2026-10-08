@@ -5,16 +5,17 @@
   "type": "module",
   "scripts": {
     "build": "rollup -c",
-    "watch": "rollup -c -w"
+    "watch": "rollup -c -w",
+    "lint": "tsc --noEmit"
   },
   "license": "MIT",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
     "@decky/ui": "^4.12.1",
-    "@rollup/rollup-linux-x64-musl": "^4.64.2",
+    "@rollup/rollup-linux-x64-musl": "^4.64.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "rollup": "^4.64.2",
+    "rollup": "^4.64.3",
     "typescript": "^7.0.2"
   },
   "dependencies": {
