@@ -19,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: ubuntu-22.04
+          - platform: ubuntu-latest
             args: ""
             name: linux
           - platform: windows-latest
@@ -36,10 +36,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install dependencies (Ubuntu)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
@@ -74,8 +74,8 @@ jobs:
           cargo tauri build ${{ matrix.args }}
 
       - name: Upload Linux artifacts
-        if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
+        if: matrix.platform == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
         with:
           name: lgtv-tray-linux
           path: |
@@ -86,7 +86,7 @@ jobs:
 
       - name: Upload Windows artifacts
         if: matrix.platform == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lgtv-tray-windows
           path: |
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload macOS artifacts
         if: matrix.platform == 'macos-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lgtv-tray-${{ matrix.name }}
           path: |

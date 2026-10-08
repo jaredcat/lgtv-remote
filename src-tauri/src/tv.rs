@@ -331,11 +331,11 @@ impl TvConnection {
 
     pub async fn send_button(&mut self, button: &str) -> Result<CommandResult, String> {
         // Reconnect input socket if needed
-        if self.input_ws.is_none() {
-            if let Err(e) = self.connect_input_socket().await {
-                self.connected = false;
-                return Err(format!("Failed to connect input socket: {}", e));
-            }
+        if self.input_ws.is_none()
+            && let Err(e) = self.connect_input_socket().await
+        {
+            self.connected = false;
+            return Err(format!("Failed to connect input socket: {}", e));
         }
 
         let input_ws = self.input_ws.as_ref().ok_or("Input socket not available")?;
@@ -471,17 +471,13 @@ impl TvConnection {
                 let wired_connected = payload["wired"]["state"].as_str() == Some("connected");
 
                 // Return MAC of the connected interface
-                if wired_connected {
-                    if let Some(mac) = wired_mac {
-                        log::info!("Using wired MAC (connected): {}", mac);
-                        return Ok(Some(mac.to_string()));
-                    }
+                if wired_connected && let Some(mac) = wired_mac {
+                    log::info!("Using wired MAC (connected): {}", mac);
+                    return Ok(Some(mac.to_string()));
                 }
-                if wifi_connected {
-                    if let Some(mac) = wifi_mac {
-                        log::info!("Using WiFi MAC (connected): {}", mac);
-                        return Ok(Some(mac.to_string()));
-                    }
+                if wifi_connected && let Some(mac) = wifi_mac {
+                    log::info!("Using WiFi MAC (connected): {}", mac);
+                    return Ok(Some(mac.to_string()));
                 }
 
                 // Fallback: return any available MAC
@@ -589,7 +585,7 @@ pub async fn wake_adb(ip: &str, port: u16) -> Result<CommandResult, String> {
 // Need to add hex as a dependency or implement manually
 mod hex {
     pub fn decode(s: &str) -> Result<Vec<u8>, ()> {
-        if s.len() % 2 != 0 {
+        if !s.len().is_multiple_of(2) {
             return Err(());
         }
         (0..s.len())

@@ -1,8 +1,14 @@
 [project]
 name = "lgtv-remote"
+version = "0.0.0"
 requires-python = ">=3.10"
+dependencies = [
+    "websockets>=16.1.1",
+]
 
 [tool.ruff]
+# Stay on 3.10 so the formatter does not emit Python 3.14-only `except` syntax.
+# Decky and the plasmoid still run on older interpreters.
 target-version = "py310"
 line-length = 100
 extend-exclude = [
@@ -24,7 +30,7 @@ ignore = ["E501", "SIM105", "B904"]
 quote-style = "double"
 
 [tool.pyright]
-pythonVersion = "3.10"
+pythonVersion = "3.14"
 stubPath = "decky/stubs"
 extraPaths = [".", "decky/py_modules", "decky/stubs"]
 exclude = [
@@ -42,3 +48,9 @@ include = [
 [tool.basedpyright]
 # Stubs mirror Decky Loader's runtime API; keep loose typing out of the checker.
 ignore = ["decky/stubs"]
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.40.2",
+    "ruff>=0.16.10",
+]

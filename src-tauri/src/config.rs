@@ -4,19 +4,10 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Per-action shortcut: key combination and whether it is a global hotkey.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ActionShortcutConfig {
     pub shortcut: String,
     pub global: bool,
-}
-
-impl Default for ActionShortcutConfig {
-    fn default() -> Self {
-        Self {
-            shortcut: String::new(),
-            global: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -134,12 +125,11 @@ impl Default for Config {
 impl Config {
     pub fn load() -> Self {
         let path = Self::config_path();
-        if path.exists() {
-            if let Ok(contents) = fs::read_to_string(&path) {
-                if let Ok(config) = serde_json::from_str(&contents) {
-                    return config;
-                }
-            }
+        if path.exists()
+            && let Ok(contents) = fs::read_to_string(&path)
+            && let Ok(config) = serde_json::from_str(&contents)
+        {
+            return config;
         }
         Config::default()
     }
