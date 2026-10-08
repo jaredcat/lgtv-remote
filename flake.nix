@@ -66,6 +66,7 @@
             echo "Commands:"
             echo "  cargo tauri dev    - Run in development mode"
             echo "  cargo tauri build  - Build for production"
+            echo "  ./scripts/macos-build.sh - macOS production build with a stable signing identity"
             echo "  cargo outdated     - Check for outdated dependencies"
             echo "  ./generate-icons.sh - Generate icon files"
             echo "  pnpm lint          - Lint JS/TS, Python, and Rust"
@@ -74,7 +75,7 @@
             echo "  pnpm format:rust   - Format Rust with rustfmt"
             echo ""
             ${pkgs.lib.optionalString (!pkgs.stdenv.isLinux) ''
-              echo "Note: nix build .#default is Linux-only. On macOS use cargo tauri build."
+              echo "Note: nix build .#default is Linux-only. On macOS use ./scripts/macos-build.sh."
               echo ""
             ''}
           '';

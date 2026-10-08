@@ -81,15 +81,21 @@ Download from the [Releases](https://github.com/jaredcat/plasmoid-lgtv-remote/re
 - **macOS**: `lgtv-tray_x.x.x_aarch64.dmg` (Apple Silicon) or `lgtv-tray_x.x.x_x64.dmg` (Intel)
 - **Linux**: `lgtv-tray_x.x.x_amd64.AppImage` or `.deb`
 
-#### macOS: Removing Quarantine
+#### macOS: Gatekeeper and Local Network
 
-Since the app isn't signed with an Apple Developer certificate, macOS Gatekeeper will block it. After installing, run:
+Release builds are not signed with an Apple Developer certificate. After installing a downloaded copy, clear the quarantine attribute:
 
 ```bash
 xattr -cr "/Applications/LG TV Remote.app"
 ```
 
-Then you can open the app normally.
+Local builds and GitHub Actions sign with the same certificate: the `lgtv-tray-remote-dev` item in the `lgtv-remote` vault on the personal 1Password account (`my.1password.com`). macOS stores the Local Network grant on that signature, so an ad-hoc rebuild would be a different app. `./scripts/macos-build.sh` imports the certificate into the login keychain when it is missing. The macOS release job loads the same item with a service account that can only read that vault. Do not regenerate the item.
+
+To re-sign an app that is already installed:
+
+```bash
+./scripts/macos-sign-app.sh "/Applications/LG TV Remote.app"
+```
 
 ### Build from Source
 
@@ -101,9 +107,13 @@ If you have Nix with flakes enabled:
 # Enter development shell with all dependencies
 nix develop
 
-# Generate icons and build
 ./generate-icons.sh
+
+# Linux
 cargo tauri build
+
+# macOS — one signing identity, so Local Network permission survives rebuilds
+./scripts/macos-build.sh
 ```
 
 **Running the dev build on NixOS:** Use the flake directly (e.g. after a push to `dev`):
@@ -176,6 +186,9 @@ cargo tauri dev
 
 # Production build
 cargo tauri build
+
+# macOS production build (stable Local Network identity)
+./scripts/macos-build.sh
 ```
 
 Build outputs are in `src-tauri/target/release/bundle/`.
