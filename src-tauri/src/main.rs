@@ -314,10 +314,8 @@ async fn power_on(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResul
     };
 
     let result = tv::wake_on_lan(&mac, None)?;
-    if wake_streaming {
-        if let Some(device) = streaming_device {
-            let _ = wake_streaming_device_impl(&device).await;
-        }
+    if wake_streaming && let Some(device) = streaming_device {
+        let _ = wake_streaming_device_impl(&device).await;
     }
     Ok(result)
 }
@@ -543,7 +541,7 @@ async fn reset_window_size(
         .app
         .windows
         .first()
-        .map(|w| (w.width as f64, w.height as f64))
+        .map(|w| (w.width, w.height))
         .unwrap_or((375.0, 525.0));
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
@@ -1000,6 +998,9 @@ fn main() {
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
                 .menu(&menu)
+                // Left click opens the remote. On macOS 27 a menu attached to the
+                // status item swallows that click and opens the menu instead.
+                .show_menu_on_left_click(false)
                 .tooltip("LG TV Remote")
                 .on_tray_icon_event(|tray, event| {
                     // Try to handle left-click (works on GNOME, may not on KDE)

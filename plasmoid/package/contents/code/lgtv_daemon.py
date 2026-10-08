@@ -396,7 +396,7 @@ class Daemon:
                 response = await self._dispatch_client_command(cmd, request)
 
             await _write_json_response(writer, response)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         except Exception as e:
             try:

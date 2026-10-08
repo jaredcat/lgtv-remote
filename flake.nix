@@ -44,7 +44,7 @@
           cargo-tauri
           cargo-outdated
           ruff
-          nodejs_22
+          nodejs_26
           pnpm
         ];
 

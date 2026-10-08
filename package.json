@@ -1,7 +1,7 @@
 {
   "name": "plasmoid-lgtv-remote",
   "private": true,
-  "packageManager": "pnpm@11.17.0",
+  "packageManager": "pnpm@12.10.1",
   "scripts": {
     "lint": "pnpm lint:js && pnpm lint:py && pnpm lint:rust",
     "lint:fix": "pnpm lint:js:fix && pnpm lint:py:fix && pnpm format:rust",
@@ -15,6 +15,6 @@
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.5"
+    "@biomejs/biome": "^2.5.15"
   }
 }
