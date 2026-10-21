@@ -54,11 +54,11 @@
         ];
 
         devShell = pkgs.mkShell {
-          buildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux linuxBuildInputs;
+          buildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux linuxBuildInputs;
           inherit nativeBuildInputs;
 
           shellHook = ''
-            ${pkgs.lib.optionalString pkgs.stdenv.isLinux ''
+            ${pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
               export LD_LIBRARY_PATH="${pkgs.lib.makeLibraryPath runtimeLibs}:$LD_LIBRARY_PATH"
             ''}
             echo "LG TV Remote development environment"
@@ -74,7 +74,7 @@
             echo "  pnpm format:py     - Format Python with Ruff"
             echo "  pnpm format:rust   - Format Rust with rustfmt"
             echo ""
-            ${pkgs.lib.optionalString (!pkgs.stdenv.isLinux) ''
+            ${pkgs.lib.optionalString (!pkgs.stdenv.hostPlatform.isLinux) ''
               echo "Note: nix build .#default is Linux-only. On macOS use ./scripts/macos-build.sh."
               echo ""
             ''}
@@ -159,11 +159,11 @@ EOF
       in {
         devShells.default = devShell;
 
-        packages = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        packages = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           default = trayPackage;
         };
 
-        apps = pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+        apps = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           default = {
             type = "app";
             program = "${trayPackage}/bin/lgtv-tray-remote";
