@@ -18,6 +18,9 @@
           inherit system overlays;
         };
 
+        # Single source of truth for the version: src-tauri/Cargo.toml
+        version = (builtins.fromTOML (builtins.readFile ./src-tauri/Cargo.toml)).package.version;
+
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" ];
         };
@@ -85,9 +88,14 @@
 
         trayPackage = pkgs.rustPlatform.buildRustPackage {
           pname = "lgtv-tray-remote";
-          version = "0.0.0";
+          inherit version;
 
           src = ./.;
+
+          # Tauri reports the version from tauri.conf.json; keep it in sync with Cargo.toml
+          postPatch = ''
+            sed -i 's/"version": "[^"]*"/"version": "${version}"/' src-tauri/tauri.conf.json
+          '';
 
           cargoRoot = "src-tauri";
           buildAndTestSubdir = "src-tauri";

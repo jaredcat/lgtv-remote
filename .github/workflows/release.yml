@@ -194,3 +194,33 @@ jobs:
 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Commit the released version back to main so source builds (e.g. nix) report it
+  bump-version:
+    needs: [prepare, release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Bump version files
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          # Cargo.lock records the package's own version too
+          sed -i "/^name = \"lgtv-tray-remote\"$/{n;s/^version = .*/version = \"$VERSION\"/}" src-tauri/Cargo.lock
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Bump version to ${{ needs.prepare.outputs.version }} [skip ci]"
+          git push origin main
