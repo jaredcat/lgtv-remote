@@ -1,7 +1,7 @@
 {
   "name": "plasmoid-lgtv-remote",
   "private": true,
-  "packageManager": "pnpm@12.10.1",
+  "packageManager": "pnpm@12.14.0",
   "scripts": {
     "lint": "pnpm lint:js && pnpm lint:decky && pnpm lint:py && pnpm lint:rust",
     "lint:fix": "pnpm lint:js:fix && pnpm lint:decky && pnpm lint:py:fix && pnpm format:rust",
@@ -9,9 +9,9 @@
     "lint:decky": "pnpm --dir decky run lint",
     "lint:js:fix": "biome check --write .",
     "format:js": "biome format --write .",
-    "lint:py": "ruff check . && ruff format --check . && python3 -m basedpyright",
-    "lint:py:fix": "ruff check --fix . && ruff format .",
-    "format:py": "ruff format .",
+    "lint:py": "uv run ruff check . && uv run ruff format --check . && uv run basedpyright",
+    "lint:py:fix": "uv run ruff check --fix . && uv run ruff format .",
+    "format:py": "uv run ruff format .",
     "lint:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings",
     "format:rust": "cargo fmt --manifest-path src-tauri/Cargo.toml --all",
     "build:macos": "bash scripts/macos-build.sh"

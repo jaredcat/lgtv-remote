@@ -11,11 +11,11 @@
   "license": "MIT",
   "devDependencies": {
     "@decky/rollup": "^1.0.2",
-    "@decky/ui": "^4.12.1",
-    "@rollup/rollup-linux-x64-musl": "^4.64.3",
+    "@decky/ui": "^4.16.0",
+    "@rollup/rollup-linux-x64-musl": "^4.64.12",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "rollup": "^4.64.3",
+    "rollup": "^4.64.12",
     "typescript": "^7.0.2"
   },
   "dependencies": {
