@@ -64,8 +64,7 @@ jobs:
           VERSION="${VERSION#v}"
           sed -i.bak "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
           sed -i.bak "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-          sed -i.bak "s/version = \"[^\"]*\";/version = \"$VERSION\";/" flake.nix
-          rm -f src-tauri/Cargo.toml.bak src-tauri/tauri.conf.json.bak flake.nix.bak
+          rm -f src-tauri/Cargo.toml.bak src-tauri/tauri.conf.json.bak
 
       - name: Install 1Password CLI
         if: matrix.platform == 'macos-latest'
