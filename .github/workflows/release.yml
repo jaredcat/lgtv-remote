@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
+      ready: ${{ steps.version.outputs.ready }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,14 +28,30 @@ jobs:
         id: version
         run: |
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.version }}"
           else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${VERSION#v}"
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Tag builds wait until ensure-release-version has written ./VERSION.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref_type }}" != "tag" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          CURRENT="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERSION is '${CURRENT:-missing}', tag wants ${VERSION}; ensure-release-version will retag."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
 
   # Build KDE Plasmoid
   build-plasmoid:
     needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
     uses: ./.github/workflows/build-plasmoid.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
@@ -42,6 +59,7 @@ jobs:
   # Build Tauri tray app
   build-tray:
     needs: prepare
+    if: needs.prepare.outputs.ready == 'true'
     uses: ./.github/workflows/build-tray.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
@@ -54,7 +72,7 @@ jobs:
   release:
     needs: [prepare, build-plasmoid, build-tray]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    if: needs.prepare.outputs.ready == 'true' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
 
     steps:
       - name: Download all artifacts

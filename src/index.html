@@ -231,13 +231,16 @@
           </div>
           <div class="app-version-row">
             <span id="app-version" class="app-version"></span>
-            <button
-              type="button"
-              class="btn-link"
-              onclick="checkForUpdates()"
-              title="Check for app updates">
-              Check for updates
-            </button>
+            <span id="update-check-wrap">
+              <button
+                type="button"
+                class="btn-link"
+                id="btn-check-updates"
+                onclick="checkForUpdates()"
+                title="Check for app updates">
+                Check for updates
+              </button>
+            </span>
             <span
               id="window-size-dev"
               class="window-size-dev"

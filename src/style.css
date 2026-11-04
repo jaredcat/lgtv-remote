@@ -236,19 +236,74 @@ header h1 {
   border-color: var(--accent);
 }
 
-/* In-page menu. A native <select> opens a GTK popup on Linux, which blurs
+/* In-page select. A native <select> opens a GTK popup on Linux, which blurs
    this window and the tray app then hides itself. */
 .type-picker {
   position: relative;
 }
 
-.type-picker-button,
-.type-picker-menu button {
+.type-picker-button {
+  position: relative;
   width: 100%;
-  padding: 10px 12px;
+  box-sizing: border-box;
+  padding: 10px 28px 10px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--bg-tertiary);
   border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.type-picker-button::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 0;
+  height: 0;
+  margin-top: -2px;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--text-secondary);
+  pointer-events: none;
+}
+
+.type-picker-button:focus,
+.type-picker-button[aria-expanded="true"] {
+  border-color: var(--accent);
+}
+
+.type-picker-menu {
+  /* Fixed so the menu is not clipped by .settings { overflow: hidden }. */
+  position: fixed;
+  z-index: 1000;
+  box-sizing: border-box;
+  padding: 4px 0;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.type-picker-menu[hidden] {
+  display: none;
+}
+
+.type-picker-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   color: var(--text-primary);
   font-size: 14px;
   font-family: inherit;
@@ -256,41 +311,9 @@ header h1 {
   cursor: pointer;
 }
 
-.type-picker-button {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.type-picker-button::after {
-  content: "";
-  width: 0.45em;
-  height: 0.45em;
-  margin-left: 8px;
-  border-right: 2px solid var(--text-secondary);
-  border-bottom: 2px solid var(--text-secondary);
-  transform: rotate(45deg) translateY(-2px);
-}
-
-.type-picker-button:focus,
 .type-picker-menu button:hover,
 .type-picker-menu button[aria-selected="true"] {
-  border-color: var(--accent);
-}
-
-.type-picker-menu {
-  position: absolute;
-  z-index: 5;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.type-picker-menu[hidden] {
-  display: none;
+  background: var(--bg-tertiary);
 }
 
 .field.checkbox {
