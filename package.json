@@ -1,7 +1,7 @@
 {
-  "name": "plasmoid-lgtv-remote",
+  "name": "lgtv-remote",
   "private": true,
-  "packageManager": "pnpm@12.14.0",
+  "packageManager": "pnpm@12.16.1",
   "scripts": {
     "lint": "pnpm lint:js && pnpm lint:decky && pnpm lint:py && pnpm lint:rust",
     "lint:fix": "pnpm lint:js:fix && pnpm lint:decky && pnpm lint:py:fix && pnpm format:rust",
@@ -17,6 +17,6 @@
     "build:macos": "bash scripts/macos-build.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15"
+    "@biomejs/biome": "^2.6.4"
   }
 }

@@ -13,7 +13,7 @@
       }
     ],
     "License": "MIT",
-    "Website": "https://github.com/jaredcat/plasmoid-lgtv-remote"
+    "Website": "https://github.com/jaredcat/lgtv-remote"
   },
   "X-Plasma-API-Minimum-Version": "6.0"
 }

@@ -41,13 +41,13 @@ nix.settings = {
 **Run directly** (no install):
 
 ```bash
-nix run github:jaredcat/plasmoid-lgtv-remote
+nix run github:jaredcat/lgtv-remote
 ```
 
 **Install to profile**:
 
 ```bash
-nix profile install github:jaredcat/plasmoid-lgtv-remote
+nix profile install github:jaredcat/lgtv-remote
 ```
 
 **Add to NixOS configuration** (flake-based):
@@ -55,7 +55,7 @@ nix profile install github:jaredcat/plasmoid-lgtv-remote
 ```nix
 # flake.nix
 {
-  inputs.lgtv-remote.url = "github:jaredcat/plasmoid-lgtv-remote";
+  inputs.lgtv-remote.url = "github:jaredcat/lgtv-remote";
 }
 
 # configuration.nix
@@ -75,7 +75,7 @@ nix build
 
 ### Pre-built Binaries
 
-Download from the [Releases](https://github.com/jaredcat/plasmoid-lgtv-remote/releases) page:
+Download from the [Releases](https://github.com/jaredcat/lgtv-remote/releases) page:
 
 - **Windows**: `lgtv-tray_x.x.x_x64-setup.exe` or `.msi`
 - **macOS**: `lgtv-tray_x.x.x_aarch64.dmg` (Apple Silicon) or `lgtv-tray_x.x.x_x64.dmg` (Intel)
@@ -119,7 +119,7 @@ cargo tauri build
 **Running the dev build on NixOS:** Use the flake directly (e.g. after a push to `dev`):
 
 ```bash
-nix run github:jaredcat/plasmoid-lgtv-remote?ref=dev
+nix run github:jaredcat/lgtv-remote?ref=dev
 ```
 
 Or from a local checkout:

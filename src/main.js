@@ -259,6 +259,69 @@ async function fetchMac() {
   }
 }
 
+const STREAMING_DEVICE_TYPE_LABELS = {
+  "": "None",
+  wol: "Wake-on-LAN (Android TV / Shield)",
+  adb: "ADB (Android TV / Shield)",
+  roku: "Roku",
+};
+
+function setStreamingDeviceType(value) {
+  const input = document.getElementById("streaming-device-type");
+  const button = document.getElementById("streaming-device-type-button");
+  input.value = value;
+  if (button) {
+    button.textContent = STREAMING_DEVICE_TYPE_LABELS[value] ?? "None";
+  }
+  const menu = document.getElementById("streaming-device-type-menu");
+  if (!menu) return;
+  for (const option of menu.querySelectorAll("[data-value]")) {
+    option.setAttribute(
+      "aria-selected",
+      option.dataset.value === value ? "true" : "false",
+    );
+  }
+}
+
+function closeStreamingDeviceMenu() {
+  const menu = document.getElementById("streaming-device-type-menu");
+  const button = document.getElementById("streaming-device-type-button");
+  if (!menu || menu.hidden) return;
+  menu.hidden = true;
+  button?.setAttribute("aria-expanded", "false");
+}
+
+function setupStreamingDeviceTypePicker() {
+  const picker = document.getElementById("streaming-device-type-picker");
+  const button = document.getElementById("streaming-device-type-button");
+  const menu = document.getElementById("streaming-device-type-menu");
+  if (!picker || !button || !menu) return;
+
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const willOpen = menu.hidden;
+    menu.hidden = !willOpen;
+    button.setAttribute("aria-expanded", String(willOpen));
+  });
+
+  menu.addEventListener("click", async (e) => {
+    const option = e.target.closest("[data-value]");
+    if (!option) return;
+    e.stopPropagation();
+    setStreamingDeviceType(option.dataset.value);
+    closeStreamingDeviceMenu();
+    await onStreamingDeviceTypeChange();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!picker.contains(e.target)) closeStreamingDeviceMenu();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeStreamingDeviceMenu();
+  });
+}
+
 function toggleStreamingDeviceFields() {
   const type = document.getElementById("streaming-device-type").value;
   document.getElementById("streaming-device-wol-row").style.display =
@@ -470,34 +533,33 @@ function populateTvConfigFields() {
 }
 
 function populateStreamingDeviceFields(streamingDevice) {
-  const typeSelect = document.getElementById("streaming-device-type");
   if (!streamingDevice) {
-    typeSelect.value = "";
+    setStreamingDeviceType("");
     return;
   }
 
   switch (streamingDevice.type) {
     case "wol":
-      typeSelect.value = "wol";
+      setStreamingDeviceType("wol");
       document.getElementById("streaming-device-mac").value =
         streamingDevice.mac || "";
       document.getElementById("streaming-device-wol-broadcast").value =
         streamingDevice.broadcast_ip || "";
       break;
     case "adb":
-      typeSelect.value = "adb";
+      setStreamingDeviceType("adb");
       document.getElementById("streaming-device-adb-ip").value =
         streamingDevice.ip || "";
       document.getElementById("streaming-device-adb-port").value =
         streamingDevice.port ? String(streamingDevice.port) : "5555";
       break;
     case "roku":
-      typeSelect.value = "roku";
+      setStreamingDeviceType("roku");
       document.getElementById("streaming-device-ip").value =
         streamingDevice.ip || "";
       break;
     default:
-      typeSelect.value = "";
+      setStreamingDeviceType("");
   }
 }
 
@@ -1091,6 +1153,7 @@ async function checkStatus() {
 // ============ Init ============
 
 document.addEventListener("DOMContentLoaded", () => {
+  setupStreamingDeviceTypePicker();
   loadConfig();
   setupShortcutRecorder();
   listenRunCommand();

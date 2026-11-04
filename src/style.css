@@ -236,6 +236,63 @@ header h1 {
   border-color: var(--accent);
 }
 
+/* In-page menu. A native <select> opens a GTK popup on Linux, which blurs
+   this window and the tray app then hides itself. */
+.type-picker {
+  position: relative;
+}
+
+.type-picker-button,
+.type-picker-menu button {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--bg-tertiary);
+  border-radius: var(--border-radius);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.type-picker-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.type-picker-button::after {
+  content: "";
+  width: 0.45em;
+  height: 0.45em;
+  margin-left: 8px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.type-picker-button:focus,
+.type-picker-menu button:hover,
+.type-picker-menu button[aria-selected="true"] {
+  border-color: var(--accent);
+}
+
+.type-picker-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.type-picker-menu[hidden] {
+  display: none;
+}
+
 .field.checkbox {
   flex-direction: row;
   align-items: center;

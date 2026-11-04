@@ -132,15 +132,36 @@
             you can control it.</small
           >
           <div class="field">
-            <label for="streaming-device-type">Type</label>
-            <select
-              id="streaming-device-type"
-              onchange="onStreamingDeviceTypeChange()">
-              <option value="">None</option>
-              <option value="wol">Wake-on-LAN (Android TV / Shield)</option>
-              <option value="adb">ADB (Android TV / Shield)</option>
-              <option value="roku">Roku</option>
-            </select>
+            <label id="streaming-device-type-label">Type</label>
+            <div class="type-picker" id="streaming-device-type-picker">
+              <input type="hidden" id="streaming-device-type" value="" />
+              <button
+                type="button"
+                class="type-picker-button"
+                id="streaming-device-type-button"
+                aria-labelledby="streaming-device-type-label"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="streaming-device-type-menu">
+                None
+              </button>
+              <div
+                class="type-picker-menu"
+                id="streaming-device-type-menu"
+                role="listbox"
+                hidden>
+                <button type="button" role="option" data-value="">None</button>
+                <button type="button" role="option" data-value="wol">
+                  Wake-on-LAN (Android TV / Shield)
+                </button>
+                <button type="button" role="option" data-value="adb">
+                  ADB (Android TV / Shield)
+                </button>
+                <button type="button" role="option" data-value="roku">
+                  Roku
+                </button>
+              </div>
+            </div>
           </div>
           <div
             id="streaming-device-wol-row"
