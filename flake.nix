@@ -18,9 +18,8 @@
           inherit system overlays;
         };
 
-        # Cargo.toml stays 0.0.0 in git so release/CI can stamp a tag into it.
-        # Pure NixOS rebuilds never see that CI working tree, so ./VERSION is
-        # what source builds read. Release automation writes it when tagging;
+        # Cargo.toml stays 0.0.0 in git so release CI can stamp the tag into it.
+        # ./VERSION is written automatically on tag push (ensure-release-version).
         # 0.0.0 means unreleased → same 0.0.0-<N> scheme as dev-version.sh.
         commit = pkgs.lib.removeSuffix "-dirty" (self.rev or self.dirtyRev or "0000000");
         releaseVersion = pkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);

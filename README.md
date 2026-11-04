@@ -53,7 +53,7 @@ nix profile install github:jaredcat/lgtv-remote
 **Add to NixOS configuration** (flake-based):
 
 ```nix
-# flake.nix
+# flake.nix — follow the default branch for automatic updates
 {
   inputs.lgtv-remote.url = "github:jaredcat/lgtv-remote";
 }
@@ -64,6 +64,21 @@ nix profile install github:jaredcat/lgtv-remote
     inputs.lgtv-remote.packages.${pkgs.system}.default
   ];
 }
+```
+
+Update with your other inputs, then rebuild:
+
+```bash
+nix flake update lgtv-remote   # or: nix flake update
+sudo nixos-rebuild switch --flake .#yourHost
+```
+
+Each GitHub release tag automatically updates `./VERSION` on that tag and on `main` (do not edit it by hand). After `nix flake update`, the UI shows that release number (for example `1.5.5`). Between releases, a plain commit still builds as `0.0.0-<N>` until the next tag syncs `VERSION`.
+
+To pin a specific release instead of tracking `main`:
+
+```nix
+inputs.lgtv-remote.url = "github:jaredcat/lgtv-remote/v1.5.5";
 ```
 
 **Build locally**:
