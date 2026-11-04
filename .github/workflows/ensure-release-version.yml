@@ -1,0 +1,56 @@
+# Pure flake evals only see git. CI working-tree stamps do not apply on NixOS.
+# When a version tag is pushed, write ./VERSION on a commit and move the tag
+# there so source builds of that tag report the release number. Cargo.toml stays
+# 0.0.0 for the tray release job to stamp.
+name: Ensure release version
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  ensure-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Sync VERSION to tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          CURRENT="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
+          if [ "$CURRENT" = "$VERSION" ]; then
+            echo "VERSION already ${VERSION}"
+            exit 0
+          fi
+
+          printf '%s\n' "$VERSION" > VERSION
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "Release ${VERSION}"
+
+          # Keep main's VERSION in sync for flake inputs that follow the default branch.
+          BRANCH="release-version-${VERSION}"
+          git push -u origin "HEAD:refs/heads/${BRANCH}" --force
+          if ! gh pr view "$BRANCH" --json url >/dev/null 2>&1; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "Release ${VERSION}" \
+              --body "Sets ./VERSION so Nix source builds of this release report ${VERSION}. Opened automatically from tag ${TAG}."
+          fi
+
+          git tag -f "$TAG"
+          git push origin "refs/tags/${TAG}" --force
+          echo "Moved ${TAG} to $(git rev-parse HEAD)"

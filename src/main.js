@@ -283,6 +283,23 @@ function setStreamingDeviceType(value) {
   }
 }
 
+function positionStreamingDeviceMenu() {
+  const button = document.getElementById("streaming-device-type-button");
+  const menu = document.getElementById("streaming-device-type-menu");
+  if (!button || !menu || menu.hidden) return;
+  const rect = button.getBoundingClientRect();
+  const menuHeight = menu.offsetHeight;
+  const gap = 2;
+  const spaceBelow = window.innerHeight - rect.bottom - gap;
+  const openUp = spaceBelow < menuHeight && rect.top > spaceBelow;
+  const top = openUp
+    ? Math.max(8, rect.top - menuHeight - gap)
+    : rect.bottom + gap;
+  menu.style.top = `${top}px`;
+  menu.style.left = `${rect.left}px`;
+  menu.style.width = `${rect.width}px`;
+}
+
 function closeStreamingDeviceMenu() {
   const menu = document.getElementById("streaming-device-type-menu");
   const button = document.getElementById("streaming-device-type-button");
@@ -297,11 +314,15 @@ function setupStreamingDeviceTypePicker() {
   const menu = document.getElementById("streaming-device-type-menu");
   if (!picker || !button || !menu) return;
 
+  // Leave the overflow:hidden settings panel so the list is not clipped.
+  document.body.appendChild(menu);
+
   button.addEventListener("click", (e) => {
     e.stopPropagation();
     const willOpen = menu.hidden;
     menu.hidden = !willOpen;
     button.setAttribute("aria-expanded", String(willOpen));
+    if (willOpen) positionStreamingDeviceMenu();
   });
 
   menu.addEventListener("click", async (e) => {
@@ -314,11 +335,17 @@ function setupStreamingDeviceTypePicker() {
   });
 
   document.addEventListener("click", (e) => {
-    if (!picker.contains(e.target)) closeStreamingDeviceMenu();
+    if (!picker.contains(e.target) && !menu.contains(e.target)) {
+      closeStreamingDeviceMenu();
+    }
   });
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeStreamingDeviceMenu();
+  });
+
+  window.addEventListener("resize", () => {
+    if (!menu.hidden) positionStreamingDeviceMenu();
   });
 }
 
@@ -595,6 +622,7 @@ async function loadConfig() {
     await loadActionShortcuts();
     await loadAutostartSettings();
     await loadVersion();
+    await applyNixUpdateNotice();
 
     applyConnectionUiAfterConfigLoad();
   } catch (e) {
@@ -612,6 +640,46 @@ async function loadShortcutSettings() {
   } catch (e) {
     console.error("Failed to load shortcut settings:", e);
   }
+}
+
+const NIX_UPDATE_HINT =
+  "Installed with Nix. Update the lgtv-remote flake input and rebuild.";
+
+let selfUpdatesSupported = true;
+
+async function applyNixUpdateNotice() {
+  try {
+    selfUpdatesSupported = await invoke("self_updates_supported");
+  } catch (e) {
+    console.error("Failed to check self-update support:", e);
+    selfUpdatesSupported = true;
+  }
+  const installBtn = document.getElementById("btn-install-update");
+  const wrap = document.getElementById("update-check-wrap");
+  const button = document.getElementById("btn-check-updates");
+  if (!selfUpdatesSupported) {
+    if (installBtn) installBtn.style.display = "none";
+    if (wrap) wrap.title = NIX_UPDATE_HINT;
+    if (button) button.title = NIX_UPDATE_HINT;
+  }
+}
+
+function showUpdateAvailable(version, { toast = false } = {}) {
+  const banner = document.getElementById("update-banner");
+  const text = document.getElementById("update-banner-text");
+  const installBtn = document.getElementById("btn-install-update");
+  if (!banner || !text) return;
+  if (selfUpdatesSupported) {
+    text.textContent = `Update ${version} available.`;
+    if (installBtn) installBtn.style.display = "";
+  } else {
+    text.textContent = `Update ${version} available. ${NIX_UPDATE_HINT}`;
+    if (installBtn) installBtn.style.display = "none";
+    if (toast) {
+      showToast(`Update ${version} available. ${NIX_UPDATE_HINT}`, "info");
+    }
+  }
+  banner.style.display = "";
 }
 
 async function loadVersion() {
@@ -1188,16 +1256,20 @@ function listenUpdateCheckResult() {
       const banner = document.getElementById("update-banner");
       const text = document.getElementById("update-banner-text");
       if (!banner || !text) return;
+      if (payload?.self_updates_supported === false) {
+        selfUpdatesSupported = false;
+      }
       if (payload?.version) {
-        text.textContent = `Update ${payload.version} available.`;
-        banner.style.display = "";
+        showUpdateAvailable(payload.version, { toast: !selfUpdatesSupported });
       } else {
         text.textContent = "You're on the latest version.";
         banner.style.display = "";
         document.getElementById("btn-install-update").style.display = "none";
         setTimeout(() => {
           banner.style.display = "none";
-          document.getElementById("btn-install-update").style.display = "";
+          if (selfUpdatesSupported) {
+            document.getElementById("btn-install-update").style.display = "";
+          }
         }, 3000);
       }
     });
@@ -1209,15 +1281,15 @@ async function checkForUpdates() {
     const meta = await invoke("check_for_updates");
     const banner = document.getElementById("update-banner");
     const text = document.getElementById("update-banner-text");
-    const installBtn = document.getElementById("btn-install-update");
     if (!banner || !text) return;
+    if (meta?.self_updates_supported === false) {
+      selfUpdatesSupported = false;
+    }
     if (meta?.version) {
-      text.textContent = `Update ${meta.version} available.`;
-      installBtn.style.display = "";
-      banner.style.display = "";
+      showUpdateAvailable(meta.version, { toast: !selfUpdatesSupported });
     } else {
       text.textContent = "You're on the latest version.";
-      installBtn.style.display = "none";
+      document.getElementById("btn-install-update").style.display = "none";
       banner.style.display = "";
       setTimeout(() => {
         banner.style.display = "none";

@@ -514,6 +514,14 @@ fn is_dev() -> bool {
     cfg!(debug_assertions)
 }
 
+/// The Nix package lives in the store, which the updater cannot replace.
+#[tauri::command]
+fn self_updates_supported() -> bool {
+    std::env::current_exe()
+        .ok()
+        .is_none_or(|path| !path.starts_with("/nix/store"))
+}
+
 /// Current main window outer size in physical pixels. For dev UI.
 #[tauri::command]
 fn get_window_size(app: tauri::AppHandle) -> Result<(u32, u32), String> {
@@ -845,6 +853,7 @@ async fn check_for_updates(app: AppHandle) -> Result<Option<serde_json::Value>, 
         Some(update) => Ok(Some(serde_json::json!({
             "version": update.version,
             "body": update.body,
+            "self_updates_supported": self_updates_supported(),
         }))),
         None => Ok(None),
     }
@@ -852,6 +861,11 @@ async fn check_for_updates(app: AppHandle) -> Result<Option<serde_json::Value>, 
 
 #[tauri::command]
 async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
+    if !self_updates_supported() {
+        return Err(
+            "Installed with Nix. Update the lgtv-remote flake input and rebuild.".to_string(),
+        );
+    }
     let update = app
         .updater()
         .map_err(|e| e.to_string())?
@@ -1031,7 +1045,9 @@ fn main() {
                 log::warn!("Failed to register global shortcuts: {}", e);
             }
 
-            // Background update check on startup (delay to avoid slowing launch)
+            // Background update check on startup (delay to avoid slowing launch).
+            // Nix installs can still be told about a newer release; they cannot
+            // self-install into the store.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -1043,6 +1059,7 @@ fn main() {
                                 serde_json::json!({
                                     "version": update.version,
                                     "body": update.body,
+                                    "self_updates_supported": self_updates_supported(),
                                 }),
                             );
                         }
@@ -1064,6 +1081,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_app_version,
             is_dev,
+            self_updates_supported,
             get_window_size,
             get_config,
             save_tv,

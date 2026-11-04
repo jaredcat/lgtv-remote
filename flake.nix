@@ -18,11 +18,17 @@
           inherit system overlays;
         };
 
-        # Cargo.toml stays 0.0.0. Release builds stamp the git tag in CI.
-        # A Nix build of a branch is not a tag, so use the same dev version as
-        # .github/scripts/dev-version.sh: 0.0.0-<first 4 hex digits of the commit>.
+        # Cargo.toml stays 0.0.0 in git so release/CI can stamp a tag into it.
+        # Pure NixOS rebuilds never see that CI working tree, so ./VERSION is
+        # what source builds read. Release automation writes it when tagging;
+        # 0.0.0 means unreleased → same 0.0.0-<N> scheme as dev-version.sh.
         commit = pkgs.lib.removeSuffix "-dirty" (self.rev or self.dirtyRev or "0000000");
-        version = "0.0.0-${toString (pkgs.lib.fromHexString (builtins.substring 0 4 commit))}";
+        releaseVersion = pkgs.lib.removeSuffix "\n" (builtins.readFile ./VERSION);
+        version =
+          if releaseVersion == "0.0.0" then
+            "0.0.0-${toString (pkgs.lib.fromHexString (builtins.substring 0 4 commit))}"
+          else
+            releaseVersion;
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" ];
