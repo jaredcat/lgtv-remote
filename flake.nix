@@ -18,8 +18,11 @@
           inherit system overlays;
         };
 
-        # Single source of truth for the version: src-tauri/Cargo.toml
-        version = (builtins.fromTOML (builtins.readFile ./src-tauri/Cargo.toml)).package.version;
+        # Cargo.toml stays 0.0.0. Release builds stamp the git tag in CI.
+        # A Nix build of a branch is not a tag, so use the same dev version as
+        # .github/scripts/dev-version.sh: 0.0.0-<first 4 hex digits of the commit>.
+        commit = pkgs.lib.removeSuffix "-dirty" (self.rev or self.dirtyRev or "0000000");
+        version = "0.0.0-${toString (pkgs.lib.fromHexString (builtins.substring 0 4 commit))}";
 
         rustToolchain = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" ];
@@ -92,8 +95,12 @@
 
           src = ./.;
 
-          # Tauri reports the version from tauri.conf.json; keep it in sync with Cargo.toml
+          # The window reads CARGO_PKG_VERSION from Cargo.toml. Stamp the dev
+          # version into the sources that get compiled; do not commit it.
+          # Leave Cargo.lock unchanged here. cargoSetupPostPatchHook requires it
+          # to match the vendored lock, which still says 0.0.0.
           postPatch = ''
+            sed -i 's/^version = ".*"/version = "${version}"/' src-tauri/Cargo.toml
             sed -i 's/"version": "[^"]*"/"version": "${version}"/' src-tauri/tauri.conf.json
           '';
 
@@ -119,6 +126,10 @@
           # Skip default cargo build, use tauri instead
           buildPhase = ''
             runHook preBuild
+
+            # The vendored-lock check has already passed. Record the same version
+            # cargo is about to compile so the lock matches Cargo.toml.
+            sed -i '/^name = "lgtv-tray-remote"$/{n;s/^version = .*/version = "${version}"/}' src-tauri/Cargo.lock
 
             cd src-tauri
             cargo tauri build --no-bundle
