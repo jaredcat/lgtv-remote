@@ -48,9 +48,11 @@ jobs:
           if ! gh pr view "$BRANCH" --json url >/dev/null 2>&1; then
             gh pr create --base main --head "$BRANCH" \
               --title "Release ${VERSION}" \
-              --body "Sets ./VERSION so Nix source builds of this release report ${VERSION}. Opened automatically from tag ${TAG}."
+              --body "Sets ./VERSION so Nix source builds of this release report ${VERSION}. Opened automatically from tag ${TAG}." \
+              || echo "::warning::Could not open PR for ${BRANCH} (Actions may lack pull-requests permission)"
           fi
 
+          # Move the tag even if the PR step failed — builds key off VERSION on the tag.
           git tag -f "$TAG"
           git push origin "refs/tags/${TAG}" --force
           echo "Moved ${TAG} to $(git rev-parse HEAD)"
