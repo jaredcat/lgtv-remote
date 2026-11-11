@@ -101,6 +101,19 @@
               Start with computer
             </label>
           </div>
+          <div class="field checkbox">
+            <label>
+              <input
+                type="checkbox"
+                id="os-media-keys-enabled"
+                onchange="toggleOsMediaKeys()" />
+              OS media keys
+            </label>
+            <small class="hint"
+              >While connected, use system media keys / Now Playing. Can
+              conflict with other app controls.</small
+            >
+          </div>
 
           <div class="settings-divider"></div>
           <label class="section-label">Wake-on-LAN (MAC Address)</label>
@@ -313,7 +326,7 @@
         </button>
         <button
           class="btn dpad-fast-forward"
-          onclick="sendButton('FAST_FORWARD')"
+          onclick="sendButton('FASTFORWARD')"
           title="Fast Forward">
           <span class="emoji" aria-hidden="true">⏩</span>
         </button>

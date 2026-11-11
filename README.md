@@ -18,6 +18,7 @@ Control your LG webOS TV from your desktop. System tray application for **Window
 - Keyboard shortcuts
 - Auto-reconnect on startup
 - **Start with computer** (autostart at login) — option in Settings
+- **OS media keys** (opt-in, off by default) — system media keys / Now Playing while connected
 - Persistent TV configuration
 
 ## Installation

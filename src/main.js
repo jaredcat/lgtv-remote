@@ -858,6 +858,7 @@ async function loadConfig() {
     await loadShortcutSettings();
     await loadActionShortcuts();
     await loadAutostartSettings();
+    await loadOsMediaKeysSettings();
     await loadVersion();
     await applyNixUpdateNotice();
 
@@ -989,6 +990,29 @@ async function toggleAutostart() {
   } catch (e) {
     showToast(e, "error");
     document.getElementById("autostart-enabled").checked = !enabled;
+  }
+}
+
+async function loadOsMediaKeysSettings() {
+  try {
+    const enabled = await invoke("get_os_media_keys_enabled");
+    document.getElementById("os-media-keys-enabled").checked = enabled;
+  } catch (e) {
+    console.error("Failed to load OS media keys setting:", e);
+  }
+}
+
+async function toggleOsMediaKeys() {
+  const enabled = document.getElementById("os-media-keys-enabled").checked;
+  try {
+    await invoke("set_os_media_keys_enabled", { enabled });
+    showToast(
+      enabled ? "OS media keys on while connected" : "OS media keys disabled",
+      "success",
+    );
+  } catch (e) {
+    showToast(e, "error");
+    document.getElementById("os-media-keys-enabled").checked = !enabled;
   }
 }
 
@@ -1381,7 +1405,7 @@ async function runAction(actionId) {
     case "stop":
       return sendButton("STOP");
     case "fast_forward":
-      return sendButton("FAST_FORWARD");
+      return sendButton("FASTFORWARD");
     case "rewind":
       return sendButton("REWIND");
     case "volume_up":
@@ -1562,6 +1586,7 @@ Object.assign(globalThis, {
   setVolumeLevel,
   toggleApps,
   toggleAutostart,
+  toggleOsMediaKeys,
   toggleSettings,
   toggleShortcut,
   toggleShortcuts,

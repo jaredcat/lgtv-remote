@@ -2,11 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod media_keys;
 mod tv;
 
 use config::{ActionShortcutConfig, Config, StreamingDeviceConfig, TvConfig, WindowSize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow,
@@ -52,6 +54,7 @@ fn outer_to_inner_size(outer_w: u32, outer_h: u32) -> (u32, u32) {
 struct AppState {
     tv: Mutex<TvConnection>,
     config: Mutex<Config>,
+    media_keys: StdMutex<media_keys::MediaKeys>,
 }
 
 // ============ Tauri Commands ============
@@ -139,6 +142,8 @@ fn spawn_keepalive(state: Arc<AppState>, app: tauri::AppHandle) {
                 }
                 Err(e) => {
                     log::warn!("Keepalive failed, connection dropped: {}", e);
+                    drop(tv);
+                    media_keys::sync(&app, state.clone()).await;
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("connection-lost", ());
                     }
@@ -163,10 +168,11 @@ async fn connect(
     let use_ssl = tv_config.use_ssl;
     drop(config);
 
-    let mut tv = state.tv.lock().await;
-    let result = tv
-        .connect(&name, &ip, client_key.as_deref(), use_ssl)
-        .await?;
+    let result = {
+        let mut tv = state.tv.lock().await;
+        tv.connect(&name, &ip, client_key.as_deref(), use_ssl)
+            .await?
+    };
 
     // Save new client key if returned
     if let Some(ref key) = result.client_key {
@@ -175,7 +181,8 @@ async fn connect(
         let _ = config.save();
     }
 
-    spawn_keepalive(state.inner().clone(), app);
+    spawn_keepalive(state.inner().clone(), app.clone());
+    media_keys::sync(&app, state.inner().clone()).await;
     Ok(result)
 }
 
@@ -204,40 +211,49 @@ async fn authenticate(
     }
 
     // Connect (will prompt for pairing on TV)
-    let mut tv = state.tv.lock().await;
-    let result = tv.connect(&name, &ip, None, use_ssl).await?;
+    let result = {
+        let mut tv = state.tv.lock().await;
+        let result = tv.connect(&name, &ip, None, use_ssl).await?;
 
-    // Save client key and try to get MAC
-    if let Some(ref key) = result.client_key {
-        let mut config = state.config.lock().await;
-        config.update_client_key(&name, key.clone());
+        // Save client key and try to get MAC
+        if let Some(ref key) = result.client_key {
+            let mut config = state.config.lock().await;
+            config.update_client_key(&name, key.clone());
 
-        // Try to get MAC address for Wake-on-LAN
-        // We need the MAC of the connected interface (wifi or wired)
-        match tv.get_connected_mac().await {
-            Ok(Some(mac)) => {
-                log::info!("Saved MAC address: {}", mac);
-                config.update_mac(&name, mac);
+            // Try to get MAC address for Wake-on-LAN
+            // We need the MAC of the connected interface (wifi or wired)
+            match tv.get_connected_mac().await {
+                Ok(Some(mac)) => {
+                    log::info!("Saved MAC address: {}", mac);
+                    config.update_mac(&name, mac);
+                }
+                Ok(None) => {
+                    log::warn!("Could not find MAC address in network info");
+                }
+                Err(e) => {
+                    log::warn!("Failed to get MAC address: {}", e);
+                }
             }
-            Ok(None) => {
-                log::warn!("Could not find MAC address in network info");
-            }
-            Err(e) => {
-                log::warn!("Failed to get MAC address: {}", e);
-            }
+
+            config.save()?;
         }
+        result
+    };
 
-        config.save()?;
-    }
-
-    spawn_keepalive(state.inner().clone(), app);
+    spawn_keepalive(state.inner().clone(), app.clone());
+    media_keys::sync(&app, state.inner().clone()).await;
     Ok(result)
 }
 
 #[tauri::command]
-async fn disconnect(state: tauri::State<'_, Arc<AppState>>) -> Result<(), String> {
+async fn disconnect(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
     let mut tv = state.tv.lock().await;
     tv.disconnect().await;
+    drop(tv);
+    media_keys::sync(&app, state.inner().clone()).await;
     Ok(())
 }
 
@@ -355,12 +371,19 @@ async fn launch_app(
 }
 
 #[tauri::command]
-async fn power_off(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
-    let mut tv = state.tv.lock().await;
-    if !tv.connected {
-        return Err("Not connected".to_string());
-    }
-    tv.power_off().await
+async fn power_off(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<CommandResult, String> {
+    let result = {
+        let mut tv = state.tv.lock().await;
+        if !tv.connected {
+            return Err("Not connected".to_string());
+        }
+        tv.power_off().await?
+    };
+    media_keys::sync(&app, state.inner().clone()).await;
+    Ok(result)
 }
 
 #[tauri::command]
@@ -497,6 +520,27 @@ async fn set_wake_streaming_on_power_on(
     let mut config = state.config.lock().await;
     config.wake_streaming_on_power_on = enabled;
     config.save()
+}
+
+#[tauri::command]
+async fn get_os_media_keys_enabled(state: tauri::State<'_, Arc<AppState>>) -> Result<bool, String> {
+    let config = state.config.lock().await;
+    Ok(config.os_media_keys_enabled)
+}
+
+#[tauri::command]
+async fn set_os_media_keys_enabled(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Arc<AppState>>,
+    enabled: bool,
+) -> Result<(), String> {
+    {
+        let mut config = state.config.lock().await;
+        config.os_media_keys_enabled = enabled;
+        config.save()?;
+    }
+    media_keys::sync(&app, state.inner().clone()).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -696,51 +740,61 @@ async fn set_action_shortcuts(
     Ok(())
 }
 
-/// Run an action by id (used for global shortcuts so they work when window is hidden).
-async fn run_action_impl(state: Arc<AppState>, action_id: &str) -> Result<(), String> {
-    let mut tv = state.tv.lock().await;
-    match action_id {
-        "up" => tv.send_button("UP").await.map(|_| ()),
-        "down" => tv.send_button("DOWN").await.map(|_| ()),
-        "left" => tv.send_button("LEFT").await.map(|_| ()),
-        "right" => tv.send_button("RIGHT").await.map(|_| ()),
-        "enter" => tv.send_button("ENTER").await.map(|_| ()),
-        "back" => tv.send_button("BACK").await.map(|_| ()),
-        "rewind" => tv.send_button("REWIND").await.map(|_| ()),
-        "play" => tv.send_button("PLAY").await.map(|_| ()),
-        "pause" => tv.send_button("PAUSE").await.map(|_| ()),
-        "stop" => tv.send_button("STOP").await.map(|_| ()),
-        "fast_forward" => tv.send_button("FAST_FORWARD").await.map(|_| ()),
-        "volume_up" => tv.volume_up().await.map(|_| ()),
-        "volume_down" => tv.volume_down().await.map(|_| ()),
-        "mute" => tv.set_mute(true).await.map(|_| ()),
-        "unmute" => tv.set_mute(false).await.map(|_| ()),
-        "power_off" => tv.power_off().await.map(|_| ()),
-        "home" => tv.send_button("HOME").await.map(|_| ()),
-        "power_on" => {
-            drop(tv);
-            let config = state.config.lock().await;
-            let (_, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
-            let mac = tv_config
-                .mac
-                .as_ref()
-                .ok_or("MAC address not saved")?
-                .clone();
-            drop(config);
-            tv::wake_on_lan(&mac, None).map(|_| ())
+/// Run an action by id (used for global shortcuts and OS media keys when window is hidden).
+pub(crate) async fn run_action_impl(
+    app: AppHandle,
+    state: Arc<AppState>,
+    action_id: &str,
+) -> Result<(), String> {
+    let result = {
+        let mut tv = state.tv.lock().await;
+        match action_id {
+            "up" => tv.send_button("UP").await.map(|_| ()),
+            "down" => tv.send_button("DOWN").await.map(|_| ()),
+            "left" => tv.send_button("LEFT").await.map(|_| ()),
+            "right" => tv.send_button("RIGHT").await.map(|_| ()),
+            "enter" => tv.send_button("ENTER").await.map(|_| ()),
+            "back" => tv.send_button("BACK").await.map(|_| ()),
+            "rewind" => tv.send_button("REWIND").await.map(|_| ()),
+            "play" => tv.send_button("PLAY").await.map(|_| ()),
+            "pause" => tv.send_button("PAUSE").await.map(|_| ()),
+            "stop" => tv.send_button("STOP").await.map(|_| ()),
+            "fast_forward" => tv.send_button("FASTFORWARD").await.map(|_| ()),
+            "volume_up" => tv.volume_up().await.map(|_| ()),
+            "volume_down" => tv.volume_down().await.map(|_| ()),
+            "mute" => tv.set_mute(true).await.map(|_| ()),
+            "unmute" => tv.set_mute(false).await.map(|_| ()),
+            "power_off" => tv.power_off().await.map(|_| ()),
+            "home" => tv.send_button("HOME").await.map(|_| ()),
+            "power_on" => {
+                drop(tv);
+                let config = state.config.lock().await;
+                let (_, tv_config) = config.get_active_tv().ok_or("No TV configured")?;
+                let mac = tv_config
+                    .mac
+                    .as_ref()
+                    .ok_or("MAC address not saved")?
+                    .clone();
+                drop(config);
+                return tv::wake_on_lan(&mac, None).map(|_| ());
+            }
+            "wake_streaming_device" => {
+                drop(tv);
+                let config = state.config.lock().await;
+                let device = config
+                    .streaming_device
+                    .clone()
+                    .ok_or("No streaming device configured")?;
+                drop(config);
+                return wake_streaming_device_impl(&device).await.map(|_| ());
+            }
+            _ => Ok(()),
         }
-        "wake_streaming_device" => {
-            drop(tv);
-            let config = state.config.lock().await;
-            let device = config
-                .streaming_device
-                .clone()
-                .ok_or("No streaming device configured")?;
-            drop(config);
-            wake_streaming_device_impl(&device).await.map(|_| ())
-        }
-        _ => Ok(()),
+    };
+    if action_id == "power_off" && result.is_ok() {
+        media_keys::sync(&app, state).await;
     }
+    result
 }
 
 /// Modifier key names (case-insensitive). Global hotkeys must include at least one
@@ -833,8 +887,9 @@ fn register_all_global_shortcuts(app: &AppHandle) -> Result<(), String> {
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 let state = state.inner().clone();
                 let action_id = action_id_run.clone();
+                let app_run = app.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = run_action_impl(state, &action_id).await {
+                    if let Err(e) = run_action_impl(app_run, state, &action_id).await {
                         log::warn!("Global shortcut action {} failed: {}", action_id, e);
                     }
                 });
@@ -957,6 +1012,7 @@ fn main() {
     let state = Arc::new(AppState {
         tv: Mutex::new(TvConnection::new()),
         config: Mutex::new(Config::load()),
+        media_keys: StdMutex::new(media_keys::MediaKeys::new()),
     });
 
     let builder = tauri::Builder::default()
@@ -1172,6 +1228,8 @@ fn main() {
             wake_streaming_device,
             set_streaming_device,
             set_wake_streaming_on_power_on,
+            get_os_media_keys_enabled,
+            set_os_media_keys_enabled,
             quit_app,
             get_shortcut_settings,
             set_shortcut,
