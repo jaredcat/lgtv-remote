@@ -290,6 +290,71 @@ async fn set_mute(
 }
 
 #[tauri::command]
+async fn get_volume(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.get_volume().await
+}
+
+#[tauri::command]
+async fn set_volume(
+    state: tauri::State<'_, Arc<AppState>>,
+    level: u32,
+) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.set_volume(level).await
+}
+
+#[tauri::command]
+async fn list_inputs(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.list_inputs().await
+}
+
+#[tauri::command]
+async fn switch_input(
+    state: tauri::State<'_, Arc<AppState>>,
+    input_id: String,
+) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.switch_input(&input_id).await
+}
+
+#[tauri::command]
+async fn list_launch_points(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.list_launch_points().await
+}
+
+#[tauri::command]
+async fn launch_app(
+    state: tauri::State<'_, Arc<AppState>>,
+    app_id: String,
+) -> Result<CommandResult, String> {
+    let mut tv = state.tv.lock().await;
+    if !tv.connected {
+        return Err("Not connected".to_string());
+    }
+    tv.launch_app(&app_id).await
+}
+
+#[tauri::command]
 async fn power_off(state: tauri::State<'_, Arc<AppState>>) -> Result<CommandResult, String> {
     let mut tv = state.tv.lock().await;
     if !tv.connected {
@@ -1094,6 +1159,12 @@ fn main() {
             volume_up,
             volume_down,
             set_mute,
+            get_volume,
+            set_volume,
+            list_inputs,
+            switch_input,
+            list_launch_points,
+            launch_app,
             power_off,
             power_on,
             fetch_mac,

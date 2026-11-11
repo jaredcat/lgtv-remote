@@ -47,6 +47,17 @@ impl CommandResult {
             payload: None,
         }
     }
+
+    pub fn ok_with_payload(payload: Value) -> Self {
+        Self {
+            success: true,
+            message: None,
+            error: None,
+            client_key: None,
+            mac: None,
+            payload: Some(payload),
+        }
+    }
 }
 
 pub struct TvConnection {
@@ -366,6 +377,97 @@ impl TvConnection {
     pub async fn set_mute(&mut self, mute: bool) -> Result<CommandResult, String> {
         self.send_command("ssap://audio/setMute", Some(json!({ "mute": mute })))
             .await?;
+        Ok(CommandResult::ok())
+    }
+
+    /// Normalized volume snapshot: `{ "volume": 0..=100, "muted": bool }`.
+    pub async fn get_volume(&mut self) -> Result<CommandResult, String> {
+        let response = self.send_command("ssap://audio/getVolume", None).await?;
+        let payload = response.get("payload").cloned().unwrap_or(json!({}));
+        let volume_status = payload.get("volumeStatus");
+
+        let volume = payload
+            .get("volume")
+            .and_then(|v| v.as_u64())
+            .or_else(|| {
+                volume_status
+                    .and_then(|s| s.get("volume"))
+                    .and_then(|v| v.as_u64())
+            })
+            .unwrap_or(0)
+            .min(100) as u64;
+
+        let muted = payload
+            .get("muted")
+            .and_then(|v| v.as_bool())
+            .or_else(|| {
+                volume_status
+                    .and_then(|s| s.get("muteStatus"))
+                    .and_then(|v| v.as_bool())
+            })
+            .or_else(|| payload.get("muteStatus").and_then(|v| v.as_bool()))
+            .unwrap_or(false);
+
+        Ok(CommandResult::ok_with_payload(json!({
+            "volume": volume,
+            "muted": muted,
+        })))
+    }
+
+    pub async fn set_volume(&mut self, level: u32) -> Result<CommandResult, String> {
+        let volume = level.min(100);
+        self.send_command("ssap://audio/setVolume", Some(json!({ "volume": volume })))
+            .await?;
+        Ok(CommandResult::ok_with_payload(json!({ "volume": volume })))
+    }
+
+    pub async fn list_inputs(&mut self) -> Result<CommandResult, String> {
+        let response = self
+            .send_command("ssap://tv/getExternalInputList", None)
+            .await?;
+        let devices = response
+            .pointer("/payload/devices")
+            .cloned()
+            .unwrap_or_else(|| json!([]));
+        Ok(CommandResult::ok_with_payload(
+            json!({ "devices": devices }),
+        ))
+    }
+
+    pub async fn switch_input(&mut self, input_id: &str) -> Result<CommandResult, String> {
+        if input_id.is_empty() {
+            return Err("Input id is required".to_string());
+        }
+        self.send_command(
+            "ssap://tv/switchInput",
+            Some(json!({ "inputId": input_id })),
+        )
+        .await?;
+        Ok(CommandResult::ok())
+    }
+
+    pub async fn list_launch_points(&mut self) -> Result<CommandResult, String> {
+        let response = self
+            .send_command("ssap://com.webos.applicationManager/listLaunchPoints", None)
+            .await?;
+        let launch_points = response
+            .pointer("/payload/launchPoints")
+            .cloned()
+            .unwrap_or_else(|| json!([]));
+        Ok(CommandResult::ok_with_payload(
+            json!({ "launchPoints": launch_points }),
+        ))
+    }
+
+    pub async fn launch_app(&mut self, app_id: &str) -> Result<CommandResult, String> {
+        if app_id.is_empty() {
+            return Err("App id is required".to_string());
+        }
+        self.send_command(
+            "ssap://system.launcher/launch",
+            Some(json!({ "id": app_id })),
+        )
+        .await?;
         Ok(CommandResult::ok())
     }
 

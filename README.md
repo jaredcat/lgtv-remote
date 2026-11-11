@@ -9,7 +9,9 @@ Control your LG webOS TV from your desktop. System tray application for **Window
 - System tray icon with popup remote control
 - D-pad navigation (Up, Down, Left, Right, OK)
 - **Media controls** (Rewind, Play/Pause, Stop, Fast Forward)
-- Volume control (Up, Down, Mute, Unmute)
+- Volume control (Up, Down, Mute, Unmute) plus absolute **volume slider**
+- **Input switching** (HDMI / external inputs from the TV)
+- **App launcher** (installed launch points)
 - Power On (Wake-on-LAN) and Power Off
 - **Wake streaming device** (Android TV / NVIDIA Shield via Wake-on-LAN, or Roku via ECP)
 - Home and Back buttons

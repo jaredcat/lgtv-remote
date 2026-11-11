@@ -321,18 +321,34 @@
 
       <!-- Volume Controls -->
       <section class="volume">
-        <button class="btn" onclick="volumeDown()" title="Volume Down">
-          <span class="emoji" aria-hidden="true">🔉</span> Vol
-        </button>
-        <button class="btn icon-btn" onclick="setMute(true)" title="Mute">
-          <span class="emoji" aria-hidden="true">🔇</span>
-        </button>
-        <button class="btn icon-btn" onclick="setMute(false)" title="Unmute">
-          <span class="emoji" aria-hidden="true">🔊</span>
-        </button>
-        <button class="btn" onclick="volumeUp()" title="Volume Up">
-          Vol <span class="emoji" aria-hidden="true">🔊</span>
-        </button>
+        <div class="volume-row">
+          <button class="btn" onclick="volumeDown()" title="Volume Down">
+            <span class="emoji" aria-hidden="true">🔉</span> Vol
+          </button>
+          <button class="btn icon-btn" onclick="setMute(true)" title="Mute">
+            <span class="emoji" aria-hidden="true">🔇</span>
+          </button>
+          <button class="btn icon-btn" onclick="setMute(false)" title="Unmute">
+            <span class="emoji" aria-hidden="true">🔊</span>
+          </button>
+          <button class="btn" onclick="volumeUp()" title="Volume Up">
+            Vol <span class="emoji" aria-hidden="true">🔊</span>
+          </button>
+        </div>
+        <div class="volume-slider-row">
+          <span id="volume-label" class="volume-label" title="Volume">—</span>
+          <input
+            type="range"
+            id="volume-slider"
+            class="volume-slider"
+            min="0"
+            max="100"
+            value="0"
+            disabled
+            oninput="onVolumeSliderInput(this.value)"
+            onchange="setVolumeLevel(this.value)"
+            title="Volume" />
+        </div>
       </section>
 
       <!-- Quick Actions -->
@@ -366,6 +382,27 @@
           style="display: none">
           <span class="emoji" aria-hidden="true">📺</span> Wake device
         </button>
+      </section>
+
+      <!-- Inputs -->
+      <section class="inputs-section">
+        <label class="section-label">Inputs</label>
+        <div id="inputs-list" class="chip-list">
+          <span class="hint">Connect to load inputs</span>
+        </div>
+      </section>
+
+      <!-- Apps (collapsible) -->
+      <section id="apps-panel" class="apps-panel collapsed">
+        <button class="apps-toggle" type="button" onclick="toggleApps()">
+          <span class="emoji" aria-hidden="true">📱</span> Apps
+          <span class="arrow">&#x25BC;</span>
+        </button>
+        <div class="apps-content">
+          <div id="apps-list" class="apps-list">
+            <span class="hint">Connect to load apps</span>
+          </div>
+        </div>
       </section>
 
       <!-- Keyboard Shortcuts (collapsible) -->

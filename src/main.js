@@ -64,13 +64,16 @@ function setStatus(connected, text) {
     statusText.textContent = text || "Connected";
     statusText.style.display = "";
     connectBtn.style.display = "none";
+    refreshConnectedUi();
   } else if (hasConnectionInfo()) {
     statusText.style.display = "none";
     connectBtn.style.display = "";
+    resetConnectedUi();
   } else {
     statusText.textContent = text || "Not Connected";
     statusText.style.display = "";
     connectBtn.style.display = "none";
+    resetConnectedUi();
   }
 }
 
@@ -115,6 +118,15 @@ function toggleShortcuts() {
   panel.classList.toggle("collapsed");
 }
 
+function toggleApps() {
+  const panel = document.getElementById("apps-panel");
+  const wasCollapsed = panel.classList.contains("collapsed");
+  panel.classList.toggle("collapsed");
+  if (wasCollapsed && isConnected) {
+    refreshApps();
+  }
+}
+
 function buttonFeedback(element) {
   element.classList.add("active");
   setTimeout(() => element.classList.remove("active"), 100);
@@ -156,6 +168,59 @@ async function sendButton(button) {
   }
 }
 
+let volumeSliderDragging = false;
+
+function applyVolumeUi(volume, muted) {
+  const slider = document.getElementById("volume-slider");
+  const label = document.getElementById("volume-label");
+  if (!slider || !label) return;
+
+  const level = Math.max(0, Math.min(100, Number(volume) || 0));
+  if (!volumeSliderDragging) {
+    slider.value = String(level);
+  }
+  slider.disabled = !isConnected;
+  label.textContent = muted ? "M" : String(level);
+  label.title = muted ? `Muted (${level})` : `Volume ${level}`;
+}
+
+function onVolumeSliderInput(value) {
+  volumeSliderDragging = true;
+  const label = document.getElementById("volume-label");
+  if (label) {
+    label.textContent = String(value);
+    label.title = `Volume ${value}`;
+  }
+}
+
+async function refreshVolume() {
+  if (!isConnected) return;
+  try {
+    const result = await invoke("get_volume");
+    const payload = result?.payload || {};
+    applyVolumeUi(payload.volume, payload.muted);
+  } catch (e) {
+    handleCommandError(e);
+  }
+}
+
+async function setVolumeLevel(value) {
+  volumeSliderDragging = false;
+  if (!isConnected) {
+    showToast("Not connected", "error");
+    return;
+  }
+
+  const level = Math.max(0, Math.min(100, Number.parseInt(value, 10) || 0));
+  try {
+    await invoke("set_volume", { level });
+    applyVolumeUi(level, false);
+  } catch (e) {
+    handleCommandError(e);
+    refreshVolume();
+  }
+}
+
 async function volumeUp() {
   if (!isConnected) {
     showToast("Not connected", "error");
@@ -164,6 +229,7 @@ async function volumeUp() {
 
   try {
     await invoke("volume_up");
+    await refreshVolume();
   } catch (e) {
     handleCommandError(e);
   }
@@ -177,6 +243,7 @@ async function volumeDown() {
 
   try {
     await invoke("volume_down");
+    await refreshVolume();
   } catch (e) {
     handleCommandError(e);
   }
@@ -191,6 +258,176 @@ async function setMute(mute) {
   try {
     await invoke("set_mute", { mute });
     showToast(mute ? "Muted" : "Unmuted", "success");
+    await refreshVolume();
+  } catch (e) {
+    handleCommandError(e);
+  }
+}
+
+function resetConnectedUi() {
+  volumeSliderDragging = false;
+  const slider = document.getElementById("volume-slider");
+  const label = document.getElementById("volume-label");
+  if (slider) {
+    slider.disabled = true;
+    slider.value = "0";
+  }
+  if (label) {
+    label.textContent = "—";
+    label.title = "Volume";
+  }
+
+  const inputsList = document.getElementById("inputs-list");
+  if (inputsList) {
+    inputsList.innerHTML = `<span class="hint">Connect to load inputs</span>`;
+  }
+
+  const appsList = document.getElementById("apps-list");
+  if (appsList) {
+    appsList.innerHTML = `<span class="hint">Connect to load apps</span>`;
+  }
+}
+
+function refreshConnectedUi() {
+  refreshVolume();
+  refreshInputs();
+  const appsPanel = document.getElementById("apps-panel");
+  if (appsPanel && !appsPanel.classList.contains("collapsed")) {
+    refreshApps();
+  }
+}
+
+function inputLabel(device) {
+  return device.label || device.appId || device.id || device.port || "Input";
+}
+
+async function refreshInputs() {
+  const list = document.getElementById("inputs-list");
+  if (!list) return;
+  if (!isConnected) {
+    list.innerHTML = `<span class="hint">Connect to load inputs</span>`;
+    return;
+  }
+
+  list.innerHTML = `<span class="hint">Loading…</span>`;
+  try {
+    const result = await invoke("list_inputs");
+    const devices = result?.payload?.devices || [];
+    if (!devices.length) {
+      list.innerHTML = `<span class="hint">No inputs found</span>`;
+      return;
+    }
+
+    list.innerHTML = "";
+    for (const device of devices) {
+      if (!device?.id) continue;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip-btn";
+      if (device.connected) btn.classList.add("connected-input");
+      btn.textContent = inputLabel(device);
+      btn.title = device.id;
+      btn.addEventListener("click", () =>
+        switchInput(device.id, inputLabel(device)),
+      );
+      list.appendChild(btn);
+    }
+    if (!list.children.length) {
+      list.innerHTML = `<span class="hint">No inputs found</span>`;
+    }
+  } catch (e) {
+    list.innerHTML = `<span class="hint">Could not load inputs</span>`;
+    handleCommandError(e);
+  }
+}
+
+async function switchInput(inputId, label) {
+  if (!isConnected) {
+    showToast("Not connected", "error");
+    return;
+  }
+
+  try {
+    await invoke("switch_input", { inputId });
+    showToast(`Switched to ${label || inputId}`, "success");
+  } catch (e) {
+    handleCommandError(e);
+  }
+}
+
+const PRIORITY_APP_IDS = [
+  "netflix",
+  "youtube.leanback.v4",
+  "youtube.leanback.kids.v4",
+  "com.webos.app.hdmi1",
+  "com.webos.app.hdmi2",
+  "com.webos.app.hdmi3",
+  "com.webos.app.hdmi4",
+  "amazon",
+  "com.disney.disneyplus-prod",
+  "com.hulu.livingroomplus",
+  "com.apple.app.tv",
+  "com.spotify.spotify.tv",
+  "plex",
+];
+
+function appSortKey(app) {
+  const id = String(app.id || "").toLowerCase();
+  const priority = PRIORITY_APP_IDS.findIndex(
+    (p) => id === p || id.includes(p),
+  );
+  return priority === -1 ? 1000 : priority;
+}
+
+async function refreshApps() {
+  const list = document.getElementById("apps-list");
+  if (!list) return;
+  if (!isConnected) {
+    list.innerHTML = `<span class="hint">Connect to load apps</span>`;
+    return;
+  }
+
+  list.innerHTML = `<span class="hint">Loading…</span>`;
+  try {
+    const result = await invoke("list_launch_points");
+    const launchPoints = (result?.payload?.launchPoints || [])
+      .filter((app) => app?.id && String(app.title || "").trim())
+      .sort((a, b) => {
+        const byPriority = appSortKey(a) - appSortKey(b);
+        if (byPriority !== 0) return byPriority;
+        return String(a.title).localeCompare(String(b.title));
+      });
+
+    if (!launchPoints.length) {
+      list.innerHTML = `<span class="hint">No apps found</span>`;
+      return;
+    }
+
+    list.innerHTML = "";
+    for (const app of launchPoints) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "app-btn";
+      btn.textContent = app.title;
+      btn.title = app.id;
+      btn.addEventListener("click", () => launchApp(app.id, app.title));
+      list.appendChild(btn);
+    }
+  } catch (e) {
+    list.innerHTML = `<span class="hint">Could not load apps</span>`;
+    handleCommandError(e);
+  }
+}
+
+async function launchApp(appId, title) {
+  if (!isConnected) {
+    showToast("Not connected", "error");
+    return;
+  }
+
+  try {
+    await invoke("launch_app", { appId });
+    showToast(`Launched ${title || appId}`, "success");
   } catch (e) {
     handleCommandError(e);
   }
@@ -1317,10 +1554,13 @@ Object.assign(globalThis, {
   fetchMac,
   installUpdate,
   onStreamingDeviceTypeChange,
+  onVolumeSliderInput,
   quitApp,
   resetWindowSize,
   saveMac,
   saveStreamingDevice,
+  setVolumeLevel,
+  toggleApps,
   toggleAutostart,
   toggleSettings,
   toggleShortcut,
