@@ -1,6 +1,6 @@
 # Pure flake evals only see git. On tag push, write ./VERSION from the tag,
-# move the tag to that commit, and push VERSION to main so
-# `nix flake update` against github:jaredcat/lgtv-remote gets the release number.
+# move the tag to that commit, and sync VERSION onto main (direct push or PR)
+# so `nix flake update` against github:jaredcat/lgtv-remote gets the release number.
 # Do not edit VERSION by hand. Cargo.toml stays 0.0.0 for CI stamping.
 name: Ensure release version
 
@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   ensure-version:
@@ -22,11 +23,14 @@ jobs:
           fetch-depth: 0
 
       - name: Sync VERSION to tag and main
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
+          BRANCH="version-sync-${VERSION}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -44,7 +48,7 @@ jobs:
           fi
 
           git fetch origin main
-          git checkout -B version-sync origin/main
+          git checkout -B "$BRANCH" origin/main
           MAIN_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
           if [ "$MAIN_VERSION" = "$VERSION" ]; then
             echo "main already has VERSION ${VERSION}"
@@ -53,9 +57,20 @@ jobs:
           printf '%s\n' "$VERSION" > VERSION
           git add VERSION
           git commit -m "Release ${VERSION}"
-          if git push origin HEAD:refs/heads/main; then
+
+          if git push origin "HEAD:refs/heads/main"; then
             echo "Updated VERSION on main to ${VERSION}"
+            exit 0
+          fi
+
+          echo "Direct push to main blocked; opening pull request."
+          git push -u origin "HEAD:refs/heads/${BRANCH}" --force
+          if gh pr list --base main --head "$BRANCH" --state open --json number --jq 'length' | grep -qx '0'; then
+            gh pr create \
+              --base main \
+              --head "$BRANCH" \
+              --title "Release ${VERSION}" \
+              --body "Sync \`VERSION\` to \`${VERSION}\` for Nix/flake consumers after tag \`${TAG}\`. Direct push to \`main\` is blocked by branch protection."
           else
-            echo "::warning::Could not push VERSION to main (branch protection?)."
-            exit 1
+            echo "PR for ${BRANCH} already open"
           fi
