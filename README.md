@@ -78,6 +78,8 @@ sudo nixos-rebuild switch --flake .#yourHost
 
 Each GitHub release tag automatically updates `./VERSION` on that tag and on `main` (do not edit it by hand). After `nix flake update`, the UI shows that release number (for example `1.5.5`). Between releases, a plain commit still builds as `0.0.0-<N>` until the next tag syncs `VERSION`.
 
+That main push uses repository secret `VERSION_SYNC_TOKEN` (an admin PAT with Contents read/write). The default Actions token cannot bypass the “require a pull request” ruleset on a personal repo.
+
 To pin a specific release instead of tracking `main`:
 
 ```nix

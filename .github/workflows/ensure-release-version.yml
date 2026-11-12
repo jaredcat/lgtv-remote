@@ -1,7 +1,12 @@
 # Pure flake evals only see git. On tag push, write ./VERSION from the tag,
-# move the tag to that commit, and sync VERSION onto main (direct push or PR)
-# so `nix flake update` against github:jaredcat/lgtv-remote gets the release number.
+# move the tag to that commit, and push VERSION to main so
+# `nix flake update` against github:jaredcat/lgtv-remote gets the release number.
 # Do not edit VERSION by hand. Cargo.toml stays 0.0.0 for CI stamping.
+#
+# Pushing to protected main requires secrets.VERSION_SYNC_TOKEN: a classic or
+# fine-grained PAT from a repo admin (admins are on the main ruleset bypass
+# list). The built-in GITHUB_TOKEN cannot bypass "require a pull request" on
+# personal repositories.
 name: Ensure release version
 
 on:
@@ -11,7 +16,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   ensure-version:
@@ -24,13 +28,12 @@ jobs:
 
       - name: Sync VERSION to tag and main
         env:
-          GH_TOKEN: ${{ github.token }}
+          VERSION_SYNC_TOKEN: ${{ secrets.VERSION_SYNC_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          BRANCH="version-sync-${VERSION}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -48,29 +51,21 @@ jobs:
           fi
 
           git fetch origin main
-          git checkout -B "$BRANCH" origin/main
+          git checkout -B version-sync origin/main
           MAIN_VERSION="$(tr -d '[:space:]' < VERSION 2>/dev/null || true)"
           if [ "$MAIN_VERSION" = "$VERSION" ]; then
             echo "main already has VERSION ${VERSION}"
             exit 0
           fi
+
+          if [ -z "${VERSION_SYNC_TOKEN}" ]; then
+            echo "::error::Add repository secret VERSION_SYNC_TOKEN (admin PAT with Contents: Read and write) so this workflow can push to protected main."
+            exit 1
+          fi
+
           printf '%s\n' "$VERSION" > VERSION
           git add VERSION
           git commit -m "Release ${VERSION}"
-
-          if git push origin "HEAD:refs/heads/main"; then
-            echo "Updated VERSION on main to ${VERSION}"
-            exit 0
-          fi
-
-          echo "Direct push to main blocked; opening pull request."
-          git push -u origin "HEAD:refs/heads/${BRANCH}" --force
-          if gh pr list --base main --head "$BRANCH" --state open --json number --jq 'length' | grep -qx '0'; then
-            gh pr create \
-              --base main \
-              --head "$BRANCH" \
-              --title "Release ${VERSION}" \
-              --body "Sync \`VERSION\` to \`${VERSION}\` for Nix/flake consumers after tag \`${TAG}\`. Direct push to \`main\` is blocked by branch protection."
-          else
-            echo "PR for ${BRANCH} already open"
-          fi
+          git remote set-url origin "https://x-access-token:${VERSION_SYNC_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:refs/heads/main
+          echo "Updated VERSION on main to ${VERSION}"

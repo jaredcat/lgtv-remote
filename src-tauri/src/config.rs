@@ -54,7 +54,7 @@ pub struct Config {
     /// If true, also send wake to streaming device when user triggers "Power On" (TV WoL).
     #[serde(default)]
     pub wake_streaming_on_power_on: bool,
-    /// If true, claim OS media keys / Now Playing while connected (can replace Spotify controls).
+    /// If true, claim OS media keys / Now Playing while connected.
     #[serde(default)]
     pub os_media_keys_enabled: bool,
     #[serde(default = "default_shortcut")]
